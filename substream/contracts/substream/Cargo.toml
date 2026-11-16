@@ -1,0 +1,15 @@
+[package]
+name = "substream-contract"
+version = "0.1.0"
+edition = "2021"
+description = "Recurring payments and subscription escrow for Stellar"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "29.0.1"
+
+[dev-dependencies]
+soroban-sdk = { version = "29.0.1", features = ["testutils"] }

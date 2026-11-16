@@ -1,0 +1,22 @@
+{
+  "name": "@substream/keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "once": "tsx src/index.ts --once",
+    "dry": "tsx src/index.ts --once --dry-run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^17.4.0",
+    "@substream/sdk": "*",
+    "dotenv": "^17.2.0",
+    "tsx": "^4.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2"
+  }
+}

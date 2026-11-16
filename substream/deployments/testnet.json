@@ -1,0 +1,59 @@
+{
+  "network": "testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "contractId": "CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN",
+  "wasmHash": "c6a7ccd0b98304b2eb4d2ef7739d0fb0b4f28478f74b9cd1e5302d54ac5bb786",
+  "token": {
+    "symbol": "XLM (native SAC)",
+    "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    "decimals": 7
+  },
+  "plans": [
+    {
+      "id": 1,
+      "amount": "10000000",
+      "interval": 2592000,
+      "gracePeriod": 86400,
+      "active": true,
+      "description": "Demo plan: 1 XLM per 30 days, one-day grace period"
+    },
+    {
+      "id": 2,
+      "amount": "10000000",
+      "interval": 60,
+      "gracePeriod": 3600,
+      "active": false,
+      "description": "Fast end-to-end smoke test plan; paused after verification"
+    },
+    {
+      "id": 3,
+      "amount": "10000000",
+      "interval": 10,
+      "gracePeriod": 3600,
+      "active": false,
+      "description": "scripts/demo.sh run; paused after the charge and refund lifecycle"
+    }
+  ],
+  "transactions": {
+    "createPlan": "f9590f9c53dff403da59b595b270fe2cfaf9bbad578f86e1055a8dc1c43505c9",
+    "subscribe": "8e506f2f3aa0a15ed43c74f99eaf31d48a5daccf9764e3d34cb8d67fb10c648b",
+    "charge": "508a73860133a224a227594f5c2e6a80035437ed3764acdbf70bdc8ff8c92444",
+    "cancel": "2a8ea66032a9b377f4ddbd78590ab88216ffe244c8810f30e458c13499105fff",
+    "pauseSmokeTestPlan": "1d602fa655292276d5c1a6cb191aca4dcc633f5977a5e885eeb475a2fc523972"
+  },
+  "demoRuns": [
+    {
+      "command": "scripts/demo.sh --interval 10 --cycles 2",
+      "planId": 3,
+      "subscriptionId": 2,
+      "transactions": {
+        "createPlan": "0f6e405195f8e077a030f97f93bca261e3a2440f5cfa89f01b136d3636aaa743",
+        "subscribe": "a95c2346ebe2c126f6d1ef2b9bf7193136ea5817fa240269d89cfb066221bcc9",
+        "charge": "e8603cdf2eb26ce163e45470af73845c8229da08ac896c52bc25dc4debd990a5",
+        "cancel": "096d1ef1c355cafd921ffed85b52bef2e72673837ae1805947807393d5daefce",
+        "pausePlan": "3f22f7612b345a505febe468791ea303bd1f5716cb7089834c75ff7eca23711b"
+      }
+    }
+  ]
+}
