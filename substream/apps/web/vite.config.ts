@@ -6,4 +6,24 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("@stellar") || id.includes("stellar-sdk")) {
+            return "stellar";
+          }
+          if (
+            id.includes("react-dom") ||
+            id.includes("/react/") ||
+            id.includes("\\react\\")
+          ) {
+            return "react-vendor";
+          }
+        },
+      },
+    },
+  },
 });

@@ -93,7 +93,7 @@ function report(name, e, w) {
   for (const x of w) console.log(`   warning: ${x}`);
 }
 
-function validateRepo() {
+function validateRepo(skillNames) {
   const e = [], w = [];
   for (const [file, mustHave] of [
     ['.claude-plugin/plugin.json', ['name']],
@@ -106,16 +106,38 @@ function validateRepo() {
       for (const k of mustHave) if (!(k in j)) e.push(`${file}: missing key "${k}"`);
     } catch (err) { e.push(`${file}: invalid JSON (${err.message})`); }
   }
+
+  // Cross-file consistency checks help keep the repo navigable as it grows.
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  const skillsReadme = readFileSync(join(SKILLS_DIR, 'README.md'), 'utf8');
+  const docsReadme = readFileSync(join(ROOT, 'docs', 'README.md'), 'utf8');
+
+  for (const name of skillNames) {
+    if (!readme.includes(`skills/${name}/SKILL.md`)) {
+      e.push(`README.md: missing link/reference to skills/${name}/SKILL.md`);
+    }
+    if (!skillsReadme.includes(`${name}/SKILL.md`)) {
+      e.push(`skills/README.md: missing link/reference to ${name}/SKILL.md`);
+    }
+  }
+
+  const docFiles = readdirSync(join(ROOT, 'docs')).filter((f) => f.endsWith('.md') && f !== 'README.md');
+  for (const file of docFiles) {
+    if (!docsReadme.includes(file)) {
+      e.push(`docs/README.md: missing link/reference to ${file}`);
+    }
+  }
+
   report('repo', e, w);
 }
 
 const arg = process.argv[2];
 if (arg) validateSkill(resolve(arg));
 else {
-  validateRepo();
-  for (const d of readdirSync(SKILLS_DIR)) {
-    const p = join(SKILLS_DIR, d);
-    if (statSync(p).isDirectory()) validateSkill(p);
+  const skillNames = readdirSync(SKILLS_DIR).filter((d) => statSync(join(SKILLS_DIR, d)).isDirectory()).sort();
+  validateRepo(skillNames);
+  for (const name of skillNames) {
+    validateSkill(join(SKILLS_DIR, name));
   }
 }
 
