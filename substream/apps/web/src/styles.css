@@ -567,6 +567,49 @@ button:not(:disabled):active {
   gap: 14px;
 }
 
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.activity-marker {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(94, 234, 212, 0.55);
+}
+
+.activity-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.activity-copy span,
+.activity-meta time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.activity-meta {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 5px;
+  text-align: right;
+}
+
 .card {
   padding: 22px;
   border-radius: var(--radius);
@@ -900,6 +943,15 @@ footer {
 
   .refresh {
     margin-left: 0;
+  }
+
+  .activity-row {
+    align-items: flex-start;
+    padding: 15px;
+  }
+
+  .activity-meta {
+    align-items: flex-end;
   }
 
   .inline-form {

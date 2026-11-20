@@ -20,7 +20,7 @@ import {
   shortAddress,
 } from "./format";
 
-type Tab = "market" | "subscriptions" | "merchant" | "keeper";
+type Tab = "market" | "subscriptions" | "activity" | "merchant" | "keeper";
 
 interface Notice {
   kind: "ok" | "err" | "info";
@@ -420,6 +420,9 @@ export default function App() {
               >
                 My subscriptions
               </TabButton>
+              <TabButton active={tab === "activity"} onClick={() => setTab("activity")}>
+                Activity
+              </TabButton>
               <TabButton
                 active={tab === "merchant"}
                 onClick={() => setTab("merchant")}
@@ -513,6 +516,16 @@ export default function App() {
                     ))}
                   </div>
                 )}
+              </section>
+            )}
+
+            {tab === "activity" && (
+              <section className="section">
+                <SectionHeading
+                  title="Subscription activity"
+                  description="Recent on-chain subscription milestones and current payment status."
+                />
+                <ActivityList subscriptions={mySubscriptions} decimals={Number(decimals)} />
               </section>
             )}
 
@@ -722,6 +735,59 @@ function SectionHeading({
     <div className="section-heading">
       <h2>{title}</h2>
       <p>{description}</p>
+    </div>
+  );
+}
+
+function ActivityList({
+  subscriptions,
+  decimals,
+}: {
+  subscriptions: Subscription[];
+  decimals: number;
+}) {
+  if (subscriptions.length === 0) {
+    return <EmptyState title="No activity yet" body="Your subscription milestones will appear here after you subscribe to a plan." />;
+  }
+
+  const rows = subscriptions.flatMap((subscription) => {
+    const history = [
+      {
+        id: `${subscription.id}-started`,
+        timestamp: subscription.startedAt,
+        title: `Subscription #${subscription.id} started`,
+        detail: `Plan #${subscription.planId} · current escrow ${formatAmount(subscription.balance, decimals)} · ${subscription.cyclesPaid} cycle(s) paid`,
+      },
+    ];
+    if (subscription.lastChargedAt > 0n) {
+      history.push({
+        id: `${subscription.id}-charged`,
+        timestamp: subscription.lastChargedAt,
+        title: `Payment settled for subscription #${subscription.id}`,
+        detail: `${formatAmount(subscription.amount, decimals)} · ${subscription.cyclesPaid} cycle(s) paid`,
+      });
+    }
+    return history.map((item) => ({ ...item, subscription }));
+  }).sort((a, b) => (a.timestamp > b.timestamp ? -1 : a.timestamp < b.timestamp ? 1 : 0));
+
+  return (
+    <div className="activity-list">
+      {rows.map(({ id, timestamp, title, detail, subscription }) => (
+        <article className="card activity-row" key={id}>
+          <span className="activity-marker" aria-hidden="true" />
+          <div className="activity-copy">
+            <strong>{title}</strong>
+            <span>{detail}</span>
+          </div>
+          <div className="activity-meta">
+            <span className={`pill ${subscription.status === SubscriptionStatus.PastDue ? "pill-warn" : subscription.status === SubscriptionStatus.Cancelled ? "pill-off" : "pill-on"}`}>
+              {statusLabel(subscription.status)}
+            </span>
+            <time>{formatDate(timestamp)}</time>
+          </div>
+        </article>
+      ))}
+      <p className="fineprint">This view is built from the contract’s current subscription records. It shows the start and most recent charge for each subscription; older individual transactions are not retained by the contract.</p>
     </div>
   );
 }
