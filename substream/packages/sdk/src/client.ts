@@ -291,6 +291,8 @@ export class SubStreamClient {
     };
   }
 
+  // A zero balance means the grace period had already expired: the contract
+  // cancelled the subscription and refunded the remainder instead of depositing.
   async topUp(
     params: TopUpParams,
   ): Promise<{ hash: string; balance: bigint }> {

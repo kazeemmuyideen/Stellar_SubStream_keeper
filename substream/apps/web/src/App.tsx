@@ -222,11 +222,19 @@ export default function App() {
         cycles: count,
         signer,
       });
-      setNotice({
-        kind: "ok",
-        text: `Subscription #${subscription.id} now holds ${formatAmount(balance, Number(decimals))} in escrow.`,
-        hash,
-      });
+      setNotice(
+        balance === 0n
+          ? {
+              kind: "info",
+              text: `Subscription #${subscription.id} was cancelled because its grace period had expired. Any remaining escrow was refunded.`,
+              hash,
+            }
+          : {
+              kind: "ok",
+              text: `Subscription #${subscription.id} now holds ${formatAmount(balance, Number(decimals))} in escrow.`,
+              hash,
+            },
+      );
       await refresh();
     });
   }

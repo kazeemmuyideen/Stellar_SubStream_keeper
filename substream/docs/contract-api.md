@@ -43,7 +43,7 @@ pub struct Subscription {
 
 | Value | Name | Meaning |
 | --- | --- | --- |
-| `0` | `Active` | Schedule is live; balances are sufficient for the next cycle |
+| `0` | `Active` | Schedule is live and escrow covers the next cycle; a sufficient top-up restores this status |
 | `1` | `PastDue` | A charge was attempted with insufficient escrow; grace period is running |
 | `2` | `Cancelled` | Terminal; remaining balance was refunded |
 
@@ -139,8 +139,14 @@ pub fn top_up(
 ```
 
 Requires subscriber auth and ownership. Transfers `subscription.amount * cycles`
-into escrow. Returns the new balance. Fails if the subscription is cancelled or
-the plan is paused. Emits `topped_up`.
+into escrow and returns the new balance. Fails if the subscription is cancelled
+or the plan is paused. A top-up that brings escrow up to at least one cycle
+sets the status back to `Active` (`PastDue` is kept when the balance is still
+short). Emits `topped_up` when a deposit is made.
+
+If the subscription is `PastDue` and `now > next_charge + grace_period`, no
+deposit is taken: the subscription is cancelled, any remaining escrow is
+refunded, `cancelled` with reason `1` is emitted, and `0` is returned.
 
 ### `charge`
 
@@ -150,7 +156,8 @@ pub fn charge(env: Env, subscription_id: u64) -> Result<u32, Error>
 
 No auth. Settles at most one cycle. See the algorithm in
 [`architecture.md`](architecture.md#5-charge-algorithm). Emits `charged` or
-`pay_fail`, and may emit `cancelled` when the grace period has expired.
+`pay_fail`, and may emit `cancelled` with reason `1` when the grace period has
+expired. `top_up` enforces the same deadline.
 
 ### `cancel`
 
@@ -215,7 +222,7 @@ the record id, and a data map keyed by field name.
 | `cancelled` | `("cancelled", subscription_id)` | `subscriber`, `refund`, `reason` |
 
 Cancellation reasons: `0 = subscriber`, `1 = grace period expired`,
-`2 = merchant`.
+`2 = merchant`. Reason `1` can be emitted by either `charge` or `top_up`.
 
 ## TTL
 

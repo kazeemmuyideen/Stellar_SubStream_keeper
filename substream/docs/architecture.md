@@ -104,7 +104,7 @@ deployment should run a scheduled TTL bumper for very large catalogs.
                  └───┬────┘                                 └────────┘
                      │ charge (balance < amount)
                      ▼
-                 ┌─────────┐  top_up / charge succeeds
+                 ┌─────────┐  top_up in grace / charge succeeds
                  │ PastDue │─────────────────────────────▶ Active
                  └────┬────┘
                       │ now > next_charge + grace_period
@@ -117,7 +117,10 @@ deployment should run a scheduled TTL bumper for very large catalogs.
 ```
 
 A cancellation is terminal. A cancelled subscription cannot be topped up or
-charged again; the subscriber must create a new subscription.
+charged again; the subscriber must create a new subscription. The grace deadline
+is enforced by both `charge` and `top_up`: a top-up after the deadline cannot
+revive a past-due subscription. It refunds any remaining escrow, cancels the
+subscription, and emits `cancelled` with reason `1`.
 
 ## 5. Charge algorithm
 
@@ -142,6 +145,9 @@ Important properties:
 
 - Charging is idempotent with respect to time: repeated calls before
   `next_charge` return `NotDue` and move no funds.
+- Expiry is enforced on both paths. A `top_up` that would restore enough escrow
+  sets the status back to `Active` while the grace window is open, but the same
+  call cancels and refunds once the deadline has passed.
 - A keeper cannot steal funds. It can only trigger the exact transfer the
   subscriber already authorized by subscribing.
 - A merchant cannot charge a cancelled subscription or skip the schedule.

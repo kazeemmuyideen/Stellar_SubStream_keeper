@@ -7,10 +7,12 @@ verified without private accounts is already done.
 
 - [x] Soroban contract with plans, escrow subscriptions, permissionless
       charges, grace periods, refunds, and typed events.
-- [x] 9 contract tests passing; `cargo fmt --check` and
+- [x] 11 contract tests passing; `cargo fmt --check` and
       `cargo clippy --all-targets -- -D warnings` clean.
-- [x] Reproducible WASM build documented; current hash
-      `c6a7ccd0b98304b2eb4d2ef7739d0fb0b4f28478f74b9cd1e5302d54ac5bb786`.
+- [x] Reproducible WASM build documented; current source hash
+      `e9baf8dbee117c6b156bc6c8aee242e17f71bf14cf34785c179542f2254cee3a`.
+      The live testnet deployment still runs the previous WASM until it is
+      redeployed.
 - [x] TypeScript SDK, React dApp, and keeper service; typecheck and production
       build pass.
 - [x] CI workflow covering contract fmt/clippy/tests/WASM plus TypeScript
@@ -33,6 +35,9 @@ verified without private accounts is already done.
       public branch).
 - [ ] Public demo URL for the dApp (for example Vercel, Netlify, or Cloudflare
       Pages). Set the `VITE_*` variables from `apps/web/.env.example`.
+- [ ] Redeploy the contract with the lifecycle fix, then update `wasmHash` and
+      the transaction links in `deployments/testnet.json` and re-run
+      `scripts/demo.sh` for fresh evidence.
 - [ ] Demo video URL. Suggested flow is in
       [`demo-video-script.md`](demo-video-script.md).
 - [ ] Confirm the $60,000 Open Track budget and tranche split, or adjust the

@@ -56,7 +56,8 @@ remaining balance.
   and subscribers can all settle due cycles.
 - **Grace periods** — a failed charge marks the subscription `PastDue`. If the
   balance is not restored before the grace period ends, the subscription is
-  cancelled and the remainder is refunded.
+  cancelled and the remainder is refunded. A top-up after that deadline
+  finalizes the cancellation instead of reviving the subscription.
 - **Refunds** — subscriber cancellation instantly returns the unused escrow.
   Merchant cancellation (for a paused plan or a past-due subscription) returns
   funds to the subscriber, never to the merchant.

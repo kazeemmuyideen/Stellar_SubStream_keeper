@@ -159,6 +159,80 @@ fn insufficient_balance_marks_past_due_then_expires() {
 }
 
 #[test]
+fn top_up_restores_active_status_after_failed_charge() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &1u32);
+
+    env.ledger().set_timestamp(START + DAY);
+    assert_eq!(client.charge(&subscription_id), OUTCOME_CHARGED);
+
+    env.ledger().set_timestamp(START + (DAY * 2));
+    assert_eq!(
+        client.charge(&subscription_id),
+        OUTCOME_INSUFFICIENT_BALANCE
+    );
+    assert_eq!(
+        client.get_subscription(&subscription_id).status,
+        STATUS_PAST_DUE
+    );
+
+    // Inside the grace window, a sufficient top-up restores Active.
+    let balance = client.top_up(&subscriber, &subscription_id, &1u32);
+    assert_eq!(balance, 1_000);
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.status, STATUS_ACTIVE);
+    assert_eq!(subscription.balance, 1_000);
+
+    // The missed cycle is still payable; the schedule was never advanced by
+    // the failed charge.
+    assert_eq!(client.charge(&subscription_id), OUTCOME_CHARGED);
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.status, STATUS_ACTIVE);
+    assert_eq!(subscription.balance, 0);
+    assert_eq!(subscription.cycles_paid, 2);
+}
+
+#[test]
+fn top_up_after_grace_period_cancels_and_refunds() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &1u32);
+
+    env.ledger().set_timestamp(START + DAY);
+    assert_eq!(client.charge(&subscription_id), OUTCOME_CHARGED);
+
+    env.ledger().set_timestamp(START + (DAY * 2));
+    assert_eq!(
+        client.charge(&subscription_id),
+        OUTCOME_INSUFFICIENT_BALANCE
+    );
+    assert_eq!(
+        client.get_subscription(&subscription_id).status,
+        STATUS_PAST_DUE
+    );
+
+    // One second past the deadline, a top-up can no longer revive the
+    // subscription. It finalizes the cancellation and refunds any remainder.
+    env.ledger().set_timestamp(START + (DAY * 2) + GRACE + 1);
+    assert_eq!(client.top_up(&subscriber, &subscription_id, &1u32), 0);
+
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.status, STATUS_CANCELLED);
+    assert_eq!(subscription.balance, 0);
+    assert_eq!(TokenClient::new(&env, &token).balance(&subscriber), 99_000);
+    assert_eq!(TokenClient::new(&env, &token).balance(&contract_id), 0);
+    assert_eq!(client.charge(&subscription_id), OUTCOME_CANCELLED);
+    assert!(client
+        .try_top_up(&subscriber, &subscription_id, &1u32)
+        .is_err());
+}
+
+#[test]
 fn plan_updates_only_affect_new_subscriptions() {
     let (env, contract_id, merchant, subscriber, token) = setup();
     let client = SubStreamContractClient::new(&env, &contract_id);

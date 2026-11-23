@@ -353,6 +353,20 @@ impl SubStreamContract {
         }
 
         let plan = get_plan_internal(&env, subscription.plan_id)?;
+
+        // A past-due subscription has until next_charge + grace_period to be
+        // restored. Finalize the expiry here so a late top-up cannot revive a
+        // subscription that charge() would already have cancelled.
+        if subscription.status == STATUS_PAST_DUE
+            && env.ledger().timestamp()
+                > subscription
+                    .next_charge
+                    .saturating_add(subscription.grace_period)
+        {
+            cancel_expired(&env, subscription_id, &mut subscription, &plan.token);
+            return Ok(subscription.balance);
+        }
+
         if !plan.active {
             return Err(Error::PlanInactive);
         }
@@ -372,6 +386,9 @@ impl SubStreamContract {
             .balance
             .checked_add(amount)
             .ok_or(Error::Overflow)?;
+        if subscription.balance >= subscription.amount {
+            subscription.status = STATUS_ACTIVE;
+        }
         put_subscription(&env, subscription_id, &subscription);
 
         ToppedUp {
@@ -411,28 +428,7 @@ impl SubStreamContract {
                 .saturating_add(subscription.grace_period);
 
             if now > deadline {
-                // Grace period expired: cancel and refund anything left.
-                let refund = subscription.balance;
-                if refund > 0 {
-                    token::Client::new(&env, &plan.token).transfer(
-                        &env.current_contract_address(),
-                        &subscription.subscriber,
-                        &refund,
-                    );
-                }
-
-                subscription.balance = 0;
-                subscription.status = STATUS_CANCELLED;
-                put_subscription(&env, subscription_id, &subscription);
-
-                Cancelled {
-                    subscription_id,
-                    subscriber: subscription.subscriber.clone(),
-                    refund,
-                    reason: 1, // grace period expired
-                }
-                .publish(&env);
-
+                cancel_expired(&env, subscription_id, &mut subscription, &plan.token);
                 return Ok(OUTCOME_CANCELLED);
             }
 
@@ -646,6 +642,37 @@ fn get_plan_internal(env: &Env, plan_id: u64) -> Result<Plan, Error> {
         .persistent()
         .get(&DataKey::Plan(plan_id))
         .ok_or(Error::PlanNotFound)
+}
+
+/// Cancel a subscription whose grace period has expired and refund any escrow
+/// left in the contract. Shared by `charge` and `top_up` so both entry points
+/// enforce the same deadline.
+fn cancel_expired(
+    env: &Env,
+    subscription_id: u64,
+    subscription: &mut Subscription,
+    token: &Address,
+) {
+    let refund = subscription.balance;
+    if refund > 0 {
+        token::Client::new(env, token).transfer(
+            &env.current_contract_address(),
+            &subscription.subscriber,
+            &refund,
+        );
+    }
+
+    subscription.balance = 0;
+    subscription.status = STATUS_CANCELLED;
+    put_subscription(env, subscription_id, subscription);
+
+    Cancelled {
+        subscription_id,
+        subscriber: subscription.subscriber.clone(),
+        refund,
+        reason: 1, // grace period expired
+    }
+    .publish(env);
 }
 
 fn put_subscription(env: &Env, subscription_id: u64, subscription: &Subscription) {
