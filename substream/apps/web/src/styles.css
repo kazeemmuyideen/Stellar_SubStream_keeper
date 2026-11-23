@@ -597,9 +597,19 @@ button:not(:disabled):active {
 }
 
 .activity-copy span,
-.activity-meta time {
+.activity-meta time,
+.activity-tx {
   color: var(--muted);
   font-size: 12px;
+}
+
+.activity-tx {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.activity-tx:hover {
+  text-decoration: underline;
 }
 
 .activity-meta {

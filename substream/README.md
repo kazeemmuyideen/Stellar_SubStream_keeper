@@ -103,6 +103,7 @@ plan behind. Transaction links are printed as it runs.
 | `packages/sdk` | TypeScript client, signer adapters, typed helpers |
 | `apps/web` | React + Vite dApp for subscribers, merchants, and manual keepers |
 | `services/keeper` | Background service that settles due subscriptions |
+| `services/indexer` | Read-only event indexer and HTTP activity API |
 | `deployments/` | Recorded testnet deployment, demo plan, and transaction links |
 | `scripts/deploy.sh` | Builds and deploys with the Stellar CLI |
 | `scripts/configure-keeper.sh` | Writes the keeper `.env` from a local identity |
@@ -220,6 +221,25 @@ runs out of XLM.
 
 To set it up manually instead, copy `services/keeper/.env.example` to
 `services/keeper/.env` and fill in `CONTRACT_ID` and `KEEPER_SECRET`.
+
+### Run the activity indexer (optional)
+
+The contract stores current state, not a transaction history. The indexer polls
+Soroban RPC for SubStream contract events and serves them through a small
+read-only HTTP API, which powers the full Activity history in the dApp.
+
+```bash
+cp services/indexer/.env.example services/indexer/.env
+# set CONTRACT_ID in services/indexer/.env
+npm run indexer:once   # one poll, then exit
+npm run indexer        # continuous polling + API on http://localhost:8787
+```
+
+Set `VITE_INDEXER_URL=http://localhost:8787` in `apps/web/.env` to enable the
+history in the dApp. Without it, the Activity tab falls back to the start and
+most recent charge derived from current contract state. See
+[`services/indexer/README.md`](services/indexer/README.md) for configuration
+and API details.
 
 ## Contract API at a glance
 

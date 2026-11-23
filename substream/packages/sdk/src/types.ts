@@ -18,6 +18,38 @@ export const ChargeOutcome = {
 export type ChargeOutcomeValue =
   (typeof ChargeOutcome)[keyof typeof ChargeOutcome];
 
+/** Topics emitted by the contract's `#[contractevent]` declarations. */
+export const EventKind = {
+  PlanCreated: "plan_new",
+  PlanUpdated: "plan_upd",
+  Subscribed: "subscribe",
+  ToppedUp: "topped_up",
+  Charged: "charged",
+  PaymentFailed: "pay_fail",
+  Cancelled: "cancelled",
+} as const;
+
+export type EventKindValue = (typeof EventKind)[keyof typeof EventKind];
+
+/** A decoded contract event as served by the indexer's HTTP API. */
+export interface IndexedEvent {
+  /** RPC event id; unique across the network. */
+  id: string;
+  kind: EventKindValue;
+  subscriptionId: string | null;
+  planId: string | null;
+  subscriber: string | null;
+  /** Base-unit amounts are strings so they survive JSON serialization. */
+  amount: string | null;
+  balance: string | null;
+  nextCharge: string | null;
+  reason: number | null;
+  txHash: string;
+  ledger: number;
+  /** Unix seconds from the ledger close time. */
+  timestamp: number;
+}
+
 export interface Plan {
   /** Client-side identifier (the contract stores plans by id). */
   id: bigint;

@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   ChargeOutcome,
+  EventKind,
   outcomeLabel,
   statusLabel,
   SubStreamClient,
   SubscriptionStatus,
+  type IndexedEvent,
   type Plan,
   type Subscription,
 } from "@substream/sdk";
@@ -30,12 +32,34 @@ interface Notice {
 
 const nowSeconds = () => BigInt(Math.floor(Date.now() / 1_000));
 
+async function fetchIndexedActivity(
+  subscriber: string,
+): Promise<IndexedEvent[] | null> {
+  if (!config.indexerUrl) return null;
+  try {
+    const query = new URLSearchParams({ subscriber, limit: "200" });
+    const url = `${config.indexerUrl.replace(/\/+$/, "")}/events?${query}`;
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`indexer returned ${response.status}`);
+    const payload = (await response.json()) as { events?: IndexedEvent[] };
+    return Array.isArray(payload.events) ? payload.events : [];
+  } catch {
+    // The dApp still works without the indexer; ActivityList falls back to
+    // the two milestones available from current contract state.
+    return null;
+  }
+}
+
 export default function App() {
   const [address, setAddress] = useState("");
   const [client, setClient] = useState<SubStreamClient | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [mySubscriptions, setMySubscriptions] = useState<Subscription[]>([]);
   const [allSubscriptions, setAllSubscriptions] = useState<Subscription[]>([]);
+  const [activityEvents, setActivityEvents] = useState<IndexedEvent[]>([]);
+  const [activityLive, setActivityLive] = useState(false);
   const [tab, setTab] = useState<Tab>("market");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -65,10 +89,15 @@ export default function App() {
           activeClient.getSubscriberSubscriptions(source, source),
           activeClient.getAllSubscriptions(source, 50),
         ]);
-      const mine = await activeClient.getSubscriptions(source, subscriptionIds);
+      const [mine, indexed] = await Promise.all([
+        activeClient.getSubscriptions(source, subscriptionIds),
+        fetchIndexedActivity(source),
+      ]);
       setPlans(allPlans);
       setMySubscriptions(mine);
       setAllSubscriptions(everySubscription);
+      setActivityEvents(indexed ?? []);
+      setActivityLive(indexed !== null);
     },
     [client, address],
   );
@@ -533,7 +562,13 @@ export default function App() {
                   title="Subscription activity"
                   description="Recent on-chain subscription milestones and current payment status."
                 />
-                <ActivityList subscriptions={mySubscriptions} decimals={Number(decimals)} />
+                <ActivityList
+                events={activityEvents}
+                live={activityLive}
+                subscriptions={mySubscriptions}
+                decimals={Number(decimals)}
+                explorerBase={config.explorerBase}
+              />
               </section>
             )}
 
@@ -747,55 +782,211 @@ function SectionHeading({
   );
 }
 
+interface ActivityRow {
+  id: string;
+  timestamp: bigint;
+  title: string;
+  detail: string;
+  status?: number;
+  txHash?: string;
+}
+
+function activityAmount(value: string | null, decimals: number): string {
+  if (value === null) return "—";
+  try {
+    return formatAmount(BigInt(value), decimals);
+  } catch {
+    return value;
+  }
+}
+
+function activityDate(value: string | null): string {
+  if (value === null) return "—";
+  try {
+    return formatDate(BigInt(value));
+  } catch {
+    return "—";
+  }
+}
+
+function cancellationReason(reason: number | null): string {
+  switch (reason) {
+    case 0:
+      return "subscriber cancelled";
+    case 1:
+      return "grace period expired";
+    case 2:
+      return "merchant cancelled";
+    default:
+      return "unknown reason";
+  }
+}
+
+function indexedRow(
+  event: IndexedEvent,
+  decimals: number,
+  subscriptions: Subscription[],
+): ActivityRow {
+  const subscription = subscriptions.find(
+    (item) => item.id.toString() === event.subscriptionId,
+  );
+  const base: ActivityRow = {
+    id: event.id,
+    timestamp: Number.isFinite(event.timestamp)
+      ? BigInt(Math.floor(event.timestamp))
+      : 0n,
+    title: "Contract event",
+    detail: "",
+    status: subscription?.status,
+    txHash: event.txHash,
+  };
+  const sub = event.subscriptionId ? `#${event.subscriptionId}` : "#?";
+  const plan = event.planId ? `#${event.planId}` : "#?";
+
+  switch (event.kind) {
+    case EventKind.Subscribed:
+      return {
+        ...base,
+        title: `Subscription ${sub} started`,
+        detail: `Plan ${plan} · deposit ${activityAmount(event.amount, decimals)}`,
+      };
+    case EventKind.ToppedUp:
+      return {
+        ...base,
+        title: `Top-up on subscription ${sub}`,
+        detail: `+${activityAmount(event.amount, decimals)} · escrow ${activityAmount(event.balance, decimals)}`,
+      };
+    case EventKind.Charged:
+      return {
+        ...base,
+        title: `Payment settled for subscription ${sub}`,
+        detail: `${activityAmount(event.amount, decimals)} charged · next charge ${activityDate(event.nextCharge)}`,
+      };
+    case EventKind.PaymentFailed:
+      return {
+        ...base,
+        title: `Payment failed for subscription ${sub}`,
+        detail: `Escrow ${activityAmount(event.balance, decimals)} · top up before the grace period ends`,
+      };
+    case EventKind.Cancelled:
+      return {
+        ...base,
+        title: `Subscription ${sub} cancelled`,
+        detail: `${cancellationReason(event.reason)} · escrow refunded`,
+      };
+    case EventKind.PlanCreated:
+      return {
+        ...base,
+        title: `Plan ${plan} created`,
+        detail: `Merchant ${shortAddress(event.subscriber ?? "")}`,
+      };
+    case EventKind.PlanUpdated:
+      return { ...base, title: `Plan ${plan} updated` };
+    default:
+      return {
+        ...base,
+        title: `${event.kind} event`,
+        detail: event.subscriptionId ? `Subscription ${sub}` : `Plan ${plan}`,
+      };
+  }
+}
+
 function ActivityList({
+  events,
+  live,
   subscriptions,
   decimals,
+  explorerBase,
 }: {
+  events: IndexedEvent[];
+  live: boolean;
   subscriptions: Subscription[];
   decimals: number;
+  explorerBase: string;
 }) {
-  if (subscriptions.length === 0) {
-    return <EmptyState title="No activity yet" body="Your subscription milestones will appear here after you subscribe to a plan." />;
-  }
+  const useIndexed = events.length > 0;
+  const rows: ActivityRow[] = useIndexed
+    ? events.map((event) => indexedRow(event, decimals, subscriptions))
+    : subscriptions
+        .flatMap((subscription) => {
+          const history = [
+            {
+              id: `${subscription.id}-started`,
+              timestamp: subscription.startedAt,
+              title: `Subscription #${subscription.id} started`,
+              detail: `Plan #${subscription.planId} · current escrow ${formatAmount(subscription.balance, decimals)} · ${subscription.cyclesPaid} cycle(s) paid`,
+            },
+          ];
+          if (subscription.lastChargedAt > 0n) {
+            history.push({
+              id: `${subscription.id}-charged`,
+              timestamp: subscription.lastChargedAt,
+              title: `Payment settled for subscription #${subscription.id}`,
+              detail: `${formatAmount(subscription.amount, decimals)} · ${subscription.cyclesPaid} cycle(s) paid`,
+            });
+          }
+          return history.map((item) => ({
+            ...item,
+            status: subscription.status,
+          }));
+        })
+        .sort((a, b) =>
+          a.timestamp > b.timestamp ? -1 : a.timestamp < b.timestamp ? 1 : 0,
+        );
 
-  const rows = subscriptions.flatMap((subscription) => {
-    const history = [
-      {
-        id: `${subscription.id}-started`,
-        timestamp: subscription.startedAt,
-        title: `Subscription #${subscription.id} started`,
-        detail: `Plan #${subscription.planId} · current escrow ${formatAmount(subscription.balance, decimals)} · ${subscription.cyclesPaid} cycle(s) paid`,
-      },
-    ];
-    if (subscription.lastChargedAt > 0n) {
-      history.push({
-        id: `${subscription.id}-charged`,
-        timestamp: subscription.lastChargedAt,
-        title: `Payment settled for subscription #${subscription.id}`,
-        detail: `${formatAmount(subscription.amount, decimals)} · ${subscription.cyclesPaid} cycle(s) paid`,
-      });
-    }
-    return history.map((item) => ({ ...item, subscription }));
-  }).sort((a, b) => (a.timestamp > b.timestamp ? -1 : a.timestamp < b.timestamp ? 1 : 0));
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="No activity yet"
+        body="Your subscription milestones will appear here after you subscribe to a plan."
+      />
+    );
+  }
 
   return (
     <div className="activity-list">
-      {rows.map(({ id, timestamp, title, detail, subscription }) => (
-        <article className="card activity-row" key={id}>
+      {rows.map((row) => (
+        <article className="card activity-row" key={row.id}>
           <span className="activity-marker" aria-hidden="true" />
           <div className="activity-copy">
-            <strong>{title}</strong>
-            <span>{detail}</span>
+            <strong>{row.title}</strong>
+            <span>{row.detail}</span>
           </div>
           <div className="activity-meta">
-            <span className={`pill ${subscription.status === SubscriptionStatus.PastDue ? "pill-warn" : subscription.status === SubscriptionStatus.Cancelled ? "pill-off" : "pill-on"}`}>
-              {statusLabel(subscription.status)}
-            </span>
-            <time>{formatDate(timestamp)}</time>
+            {row.status !== undefined && (
+              <span
+                className={`pill ${
+                  row.status === SubscriptionStatus.PastDue
+                    ? "pill-warn"
+                    : row.status === SubscriptionStatus.Cancelled
+                      ? "pill-off"
+                      : "pill-on"
+                }`}
+              >
+                {statusLabel(row.status)}
+              </span>
+            )}
+            <time>{formatDate(row.timestamp)}</time>
+            {row.txHash && (
+              <a
+                className="activity-tx"
+                href={`${explorerBase}/${row.txHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View transaction ↗
+              </a>
+            )}
           </div>
         </article>
       ))}
-      <p className="fineprint">This view is built from the contract’s current subscription records. It shows the start and most recent charge for each subscription; older individual transactions are not retained by the contract.</p>
+      <p className="fineprint">
+        {useIndexed
+          ? "Full history decoded from on-chain contract events by the SubStream indexer."
+          : live
+            ? "The indexer is reachable but has not recorded events yet; showing the start and most recent charge from current contract state."
+            : "The indexer is not configured. Showing the start and most recent charge from current contract state; older transactions are not retained by the contract."}
+      </p>
     </div>
   );
 }

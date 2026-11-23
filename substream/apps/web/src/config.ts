@@ -9,6 +9,7 @@ export const config = {
     import.meta.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org",
   networkPassphrase,
   defaultToken: import.meta.env.VITE_TOKEN_ADDRESS || "",
+  indexerUrl: import.meta.env.VITE_INDEXER_URL || "",
   networkLabel: networkPassphrase.includes("Test SDF")
     ? "Stellar Testnet"
     : networkPassphrase.includes("Public Global")

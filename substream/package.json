@@ -8,16 +8,20 @@
   "workspaces": [
     "packages/sdk",
     "apps/web",
-    "services/keeper"
+    "services/keeper",
+    "services/indexer"
   ],
   "scripts": {
     "dev": "npm run dev -w @substream/web",
     "build": "npm run typecheck -w @substream/sdk && npm run build -w @substream/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "keeper": "npm run start -w @substream/keeper",
     "keeper:configure": "./scripts/configure-keeper.sh",
     "keeper:once": "npm run once -w @substream/keeper",
     "keeper:dry-run": "npm run dry -w @substream/keeper",
+    "indexer": "npm run start -w @substream/indexer",
+    "indexer:once": "npm run once -w @substream/indexer",
     "contract:test": "cargo test --manifest-path Cargo.toml",
     "contract:build": "stellar contract build --manifest-path contracts/substream/Cargo.toml"
   },
