@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -84,4 +84,22 @@ test("store caps retained events", () => {
     store.query({ limit: 10 }).map((item) => item.id),
     ["c", "b"],
   );
+  assert.deepEqual(store.eventCounts, { charged: 2 });
+});
+
+test("corrupt state is quarantined and starts fresh", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "substream-indexer-"));
+  const stateFile = join(directory, "state.json");
+
+  try {
+    await writeFile(stateFile, "{not json");
+    const store = new EventStore(stateFile, 100);
+    assert.equal(await store.load(), true);
+    assert.equal(store.size, 0);
+
+    const files = await readdir(directory);
+    assert.equal(files.some((file) => file.includes("corrupt")), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

@@ -66,6 +66,8 @@ export interface Subscription {
   /** Client-side identifier (the contract stores subscriptions by id). */
   id: bigint;
   planId: bigint;
+  /** Snapshotted token so refunds do not depend on the plan record. */
+  token: string;
   subscriber: string;
   amount: bigint;
   interval: bigint;

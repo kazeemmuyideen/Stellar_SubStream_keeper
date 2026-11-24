@@ -3,6 +3,8 @@ import type { EventKindValue } from "@substream/sdk";
 export interface IndexerConfig {
   contractId: string;
   rpcUrl: string;
+  rpcTimeoutMs: number;
+  allowHttp: boolean;
   port: number;
   pollIntervalMs: number;
   stateFile: string;
@@ -22,12 +24,17 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function positiveInt(name: string, fallback: number): number {
+export function boundedInt(
+  name: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer`);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
   }
   return value;
 }
@@ -46,14 +53,16 @@ export function loadConfig(): IndexerConfig {
     contractId: requireEnv("CONTRACT_ID"),
     rpcUrl:
       process.env.RPC_URL?.trim() || "https://soroban-testnet.stellar.org",
-    port: positiveInt("PORT", 8787),
-    pollIntervalMs: positiveInt("POLL_INTERVAL_MS", 15_000),
+    rpcTimeoutMs: boundedInt("RPC_TIMEOUT_MS", 15_000, 1_000, 60_000),
+    allowHttp: process.env.ALLOW_HTTP?.trim() === "1",
+    port: boundedInt("PORT", 8787, 1, 65_535),
+    pollIntervalMs: boundedInt("POLL_INTERVAL_MS", 15_000, 1_000, 86_400_000),
     stateFile: process.env.STATE_FILE?.trim() || "./data/events.json",
     startLedger: parsedStart,
-    lookbackLedgers: positiveInt("LOOKBACK_LEDGERS", 10_000),
-    maxEvents: positiveInt("MAX_EVENTS", 5_000),
-    pageSize: Math.min(positiveInt("PAGE_SIZE", 200), 1_000),
-    maxPagesPerTick: positiveInt("MAX_PAGES_PER_TICK", 10),
+    lookbackLedgers: boundedInt("LOOKBACK_LEDGERS", 10_000, 1, 1_000_000),
+    maxEvents: boundedInt("MAX_EVENTS", 5_000, 1, 100_000),
+    pageSize: boundedInt("PAGE_SIZE", 200, 1, 1_000),
+    maxPagesPerTick: boundedInt("MAX_PAGES_PER_TICK", 10, 1, 100),
     kinds: new Set<EventKindValue>([
       "plan_new",
       "plan_upd",

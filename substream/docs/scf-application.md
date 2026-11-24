@@ -14,7 +14,7 @@
 | Requested amount | **$60,000 in XLM** |
 | Milestones | MVP ($12K), Testnet ($18K), Mainnet ($24K), plus T0 ($6K) |
 | Repository | `substream/` in this repository (public, MIT) |
-| Stage | Working prototype: contract, 9 passing tests, SDK, dApp, keeper |
+| Stage | Working prototype: contract, 19 passing tests, SDK, dApp, keeper, indexer |
 | Team | _[name(s), roles, GitHub, relevant background]_ |
 | Contact | _[email / Telegram / Discord]_ |
 
@@ -64,12 +64,15 @@ This repository already contains the prototype:
 
 - Soroban contract with plan creation, subscription escrow, top-ups,
   permissionless charges, grace periods, refunds, TTL management, and events.
-- **9/9 unit tests passing** (`cargo test`), including grace-period expiry,
+- **19/19 unit tests passing** (`cargo test --workspace`), including grace-period
+  expiry, refund-safe token snapshots, bounded discovery indexes, ID overflow,
   plan-update isolation, and merchant cancellation.
-- TypeScript SDK with typed reads/writes, signer adapters, and due-subscription
-  discovery.
-- React dApp with subscriber, merchant, and manual keeper views.
-- Background keeper with dry-run support.
+- TypeScript SDK with typed reads/writes, signer adapters, bounded
+  due-subscription discovery, and transaction verification.
+- React dApp with subscriber, merchant, activity history, and manual keeper
+  views.
+- Background keeper with dry-run support and a bounded event indexer with an
+  HTTP API.
 - One-command testnet deployment script.
 - Live testnet deployment with a full create → subscribe → charge → cancel
   lifecycle exercised on chain (transaction links in the README).

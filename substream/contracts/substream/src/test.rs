@@ -1,6 +1,6 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{storage::Persistent as _, Address as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
     Address, Env,
 };
@@ -50,6 +50,7 @@ fn creates_plan_and_subscription() {
 
     let subscription = client.get_subscription(&subscription_id);
     assert_eq!(subscription.plan_id, plan_id);
+    assert_eq!(subscription.token, token);
     assert_eq!(subscription.amount, 1_000);
     assert_eq!(subscription.interval, DAY);
     assert_eq!(subscription.grace_period, GRACE);
@@ -313,6 +314,53 @@ fn rejects_invalid_plan_terms() {
 }
 
 #[test]
+fn ttl_bump_helpers_extend_live_records() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &1u32);
+
+    // Advance far enough that both records fall below their bump threshold.
+    env.ledger().set_sequence_number(1_200_000);
+    assert!(
+        env.as_contract(&contract_id, || env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Plan(plan_id)))
+            < PERSISTENT_THRESHOLD
+    );
+    assert!(
+        env.as_contract(&contract_id, || env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Subscription(subscription_id)))
+            < PERSISTENT_THRESHOLD
+    );
+
+    client.bump_plan(&plan_id);
+    client.bump_subscription(&subscription_id);
+
+    assert_eq!(
+        env.as_contract(&contract_id, || env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Plan(plan_id))),
+        PERSISTENT_EXTEND
+    );
+    assert_eq!(
+        env.as_contract(&contract_id, || env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::Subscription(subscription_id))),
+        PERSISTENT_EXTEND
+    );
+
+    assert!(client.try_bump_plan(&999).is_err());
+    assert!(client.try_bump_subscription(&999).is_err());
+}
+
+#[test]
 fn only_merchant_can_update_plan() {
     let (env, contract_id, merchant, _subscriber, token) = setup();
     let client = SubStreamContractClient::new(&env, &contract_id);
@@ -323,4 +371,151 @@ fn only_merchant_can_update_plan() {
     assert!(client
         .try_update_plan(&other, &plan_id, &2_000i128, &DAY, &GRACE, &true)
         .is_err());
+}
+
+#[test]
+fn refund_works_after_plan_record_is_removed() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &3u32);
+
+    // Simulates an archived/evicted plan record. The subscription snapshots
+    // the token, so the subscriber can still recover every escrowed unit.
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().remove(&DataKey::Plan(plan_id));
+    });
+
+    assert_eq!(client.cancel(&subscriber, &subscription_id), 3_000);
+    assert_eq!(TokenClient::new(&env, &token).balance(&subscriber), 100_000);
+    assert_eq!(TokenClient::new(&env, &token).balance(&contract_id), 0);
+}
+
+#[test]
+fn top_up_after_deadline_cannot_revive_never_charged_subscription() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &1u32);
+
+    env.ledger().set_timestamp(START + DAY);
+    assert_eq!(client.charge(&subscription_id), OUTCOME_CHARGED);
+
+    // Nobody calls charge for the next cycle, so this subscription is still
+    // Active with an empty balance. The grace deadline must still apply.
+    env.ledger().set_timestamp(START + (DAY * 2) + GRACE + 1);
+    assert_eq!(client.top_up(&subscriber, &subscription_id, &1u32), 0);
+
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.status, STATUS_CANCELLED);
+    assert_eq!(subscription.balance, 0);
+    assert_eq!(TokenClient::new(&env, &token).balance(&subscriber), 99_000);
+    assert_eq!(TokenClient::new(&env, &token).balance(&contract_id), 0);
+}
+
+#[test]
+fn discovery_indexes_are_bounded() {
+    let (env, contract_id, merchant, _subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    for _ in 0..101 {
+        client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    }
+
+    let ids = client.get_merchant_plans(&merchant);
+    assert_eq!(ids.len(), 100);
+    assert_eq!(ids.get(0), Some(2));
+    assert_eq!(ids.get(99), Some(101));
+}
+
+#[test]
+fn ids_never_wrap_when_the_counter_is_exhausted() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&DataKey::PlanCount, &u64::MAX);
+    });
+    assert!(client
+        .try_create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE)
+        .is_err());
+    assert_eq!(client.get_plan_count(), u64::MAX);
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::SubscriptionCount, &u64::MAX);
+    });
+    assert!(client.try_subscribe(&subscriber, &plan_id, &1u32).is_err());
+    assert_eq!(client.get_subscription_count(), u64::MAX);
+}
+
+#[test]
+fn charge_rejects_schedule_overflow() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &2u32);
+
+    env.ledger().set_timestamp(u64::MAX);
+    assert!(client.try_charge(&subscription_id).is_err());
+
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.balance, 2_000);
+    assert_eq!(subscription.cycles_paid, 0);
+    assert_eq!(subscription.status, STATUS_ACTIVE);
+}
+
+#[test]
+fn charge_rejects_cycle_counter_overflow() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &1u32);
+
+    env.as_contract(&contract_id, || {
+        let mut subscription: Subscription = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Subscription(subscription_id))
+            .unwrap();
+        subscription.cycles_paid = u32::MAX;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Subscription(subscription_id), &subscription);
+    });
+
+    env.ledger().set_timestamp(START + DAY);
+    assert!(client.try_charge(&subscription_id).is_err());
+
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.balance, 1_000);
+    assert_eq!(subscription.cycles_paid, u32::MAX);
+}
+
+#[test]
+fn zero_cycle_top_up_is_invalid_even_when_overdue() {
+    let (env, contract_id, merchant, subscriber, token) = setup();
+    let client = SubStreamContractClient::new(&env, &contract_id);
+
+    let plan_id = client.create_plan(&merchant, &token, &1_000i128, &DAY, &GRACE);
+    let subscription_id = client.subscribe(&subscriber, &plan_id, &1u32);
+
+    env.ledger().set_timestamp(START + DAY);
+    assert_eq!(client.charge(&subscription_id), OUTCOME_CHARGED);
+    env.ledger().set_timestamp(START + (DAY * 2) + GRACE + 1);
+
+    assert!(client
+        .try_top_up(&subscriber, &subscription_id, &0u32)
+        .is_err());
+
+    let subscription = client.get_subscription(&subscription_id);
+    assert_eq!(subscription.status, STATUS_ACTIVE);
+    assert_eq!(subscription.balance, 0);
 }

@@ -41,6 +41,9 @@ const PERSISTENT_EXTEND: u32 = DAY_IN_LEDGERS * 90;
 const INSTANCE_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
 const INSTANCE_EXTEND: u32 = DAY_IN_LEDGERS * 90;
 
+// Keep per-address discovery vectors from growing without bound.
+const MAX_INDEX_IDS: u32 = 100;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -72,6 +75,8 @@ pub struct Plan {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Subscription {
     pub plan_id: u64,
+    /// Token is snapshotted so refunds never depend on the plan record staying live.
+    pub token: Address,
     pub subscriber: Address,
     /// Amount and interval are snapshotted at subscribe time so a merchant
     /// cannot unilaterally change the terms of an existing subscription.
@@ -124,6 +129,7 @@ pub struct PlanUpdated {
     pub plan_id: u64,
     pub amount: i128,
     pub interval: u64,
+    pub grace_period: u64,
     pub active: bool,
 }
 
@@ -202,7 +208,7 @@ impl SubStreamContract {
         merchant.require_auth();
         validate_terms(amount, interval)?;
 
-        let plan_id = next_id(&env, DataKey::PlanCount);
+        let plan_id = next_id(&env, DataKey::PlanCount)?;
         let now = env.ledger().timestamp();
 
         let plan = Plan {
@@ -259,6 +265,7 @@ impl SubStreamContract {
             plan_id,
             amount,
             interval,
+            grace_period,
             active,
         }
         .publish(&env);
@@ -295,12 +302,13 @@ impl SubStreamContract {
             &deposit,
         );
 
-        let subscription_id = next_id(&env, DataKey::SubscriptionCount);
+        let subscription_id = next_id(&env, DataKey::SubscriptionCount)?;
         let now = env.ledger().timestamp();
         let next_charge = now.checked_add(plan.interval).ok_or(Error::Overflow)?;
 
         let subscription = Subscription {
             plan_id,
+            token: plan.token.clone(),
             subscriber: subscriber.clone(),
             amount: plan.amount,
             interval: plan.interval,
@@ -352,21 +360,14 @@ impl SubStreamContract {
             return Err(Error::InvalidCycles);
         }
 
-        let plan = get_plan_internal(&env, subscription.plan_id)?;
-
-        // A past-due subscription has until next_charge + grace_period to be
-        // restored. Finalize the expiry here so a late top-up cannot revive a
-        // subscription that charge() would already have cancelled.
-        if subscription.status == STATUS_PAST_DUE
-            && env.ledger().timestamp()
-                > subscription
-                    .next_charge
-                    .saturating_add(subscription.grace_period)
-        {
-            cancel_expired(&env, subscription_id, &mut subscription, &plan.token);
+        // Finalize an overdue subscription before accepting new funds. This is
+        // independent of the current status, so a subscription that nobody has
+        // charged yet cannot be revived after its grace deadline.
+        if maybe_expire(&env, subscription_id, &mut subscription) {
             return Ok(subscription.balance);
         }
 
+        let plan = get_plan_internal(&env, subscription.plan_id)?;
         if !plan.active {
             return Err(Error::PlanInactive);
         }
@@ -376,12 +377,6 @@ impl SubStreamContract {
             .checked_mul(cycles as i128)
             .ok_or(Error::Overflow)?;
 
-        token::Client::new(&env, &plan.token).transfer(
-            &subscriber,
-            env.current_contract_address(),
-            &amount,
-        );
-
         subscription.balance = subscription
             .balance
             .checked_add(amount)
@@ -390,6 +385,12 @@ impl SubStreamContract {
             subscription.status = STATUS_ACTIVE;
         }
         put_subscription(&env, subscription_id, &subscription);
+
+        token::Client::new(&env, &subscription.token).transfer(
+            &subscriber,
+            env.current_contract_address(),
+            &amount,
+        );
 
         ToppedUp {
             subscription_id,
@@ -411,27 +412,23 @@ impl SubStreamContract {
             return Ok(OUTCOME_CANCELLED);
         }
 
-        let plan = get_plan_internal(&env, subscription.plan_id)?;
         let now = env.ledger().timestamp();
-
         if now < subscription.next_charge {
             return Ok(OUTCOME_NOT_DUE);
         }
 
+        // Expiry does not depend on the plan record, so an overdue subscription
+        // is refunded even if the plan was archived or paused.
+        if maybe_expire(&env, subscription_id, &mut subscription) {
+            return Ok(OUTCOME_CANCELLED);
+        }
+
+        let plan = get_plan_internal(&env, subscription.plan_id)?;
         if !plan.active {
             return Ok(OUTCOME_PLAN_INACTIVE);
         }
 
         if subscription.balance < subscription.amount {
-            let deadline = subscription
-                .next_charge
-                .saturating_add(subscription.grace_period);
-
-            if now > deadline {
-                cancel_expired(&env, subscription_id, &mut subscription, &plan.token);
-                return Ok(OUTCOME_CANCELLED);
-            }
-
             subscription.status = STATUS_PAST_DUE;
             put_subscription(&env, subscription_id, &subscription);
 
@@ -447,25 +444,31 @@ impl SubStreamContract {
         }
 
         let merchant = plan.merchant.clone();
-        token::Client::new(&env, &plan.token).transfer(
-            &env.current_contract_address(),
-            &merchant,
-            &subscription.amount,
-        );
-
-        subscription.balance -= subscription.amount;
-        subscription.cycles_paid = subscription.cycles_paid.saturating_add(1);
+        let amount = subscription.amount;
+        subscription.balance -= amount;
+        subscription.cycles_paid = subscription
+            .cycles_paid
+            .checked_add(1)
+            .ok_or(Error::Overflow)?;
         subscription.last_charged_at = now;
-        subscription.next_charge = now.saturating_add(subscription.interval);
+        subscription.next_charge = now
+            .checked_add(subscription.interval)
+            .ok_or(Error::Overflow)?;
         subscription.status = STATUS_ACTIVE;
         put_subscription(&env, subscription_id, &subscription);
+
+        token::Client::new(&env, &subscription.token).transfer(
+            &env.current_contract_address(),
+            &merchant,
+            &amount,
+        );
 
         Charged {
             subscription_id,
             plan_id: subscription.plan_id,
             subscriber: subscription.subscriber.clone(),
             merchant,
-            amount: subscription.amount,
+            amount,
             next_charge: subscription.next_charge,
         }
         .publish(&env);
@@ -485,20 +488,19 @@ impl SubStreamContract {
             return Err(Error::AlreadyCancelled);
         }
 
-        let plan = get_plan_internal(&env, subscription.plan_id)?;
         let refund = subscription.balance;
 
+        subscription.balance = 0;
+        subscription.status = STATUS_CANCELLED;
+        put_subscription(&env, subscription_id, &subscription);
+
         if refund > 0 {
-            token::Client::new(&env, &plan.token).transfer(
+            token::Client::new(&env, &subscription.token).transfer(
                 &env.current_contract_address(),
                 &subscriber,
                 &refund,
             );
         }
-
-        subscription.balance = 0;
-        subscription.status = STATUS_CANCELLED;
-        put_subscription(&env, subscription_id, &subscription);
 
         Cancelled {
             subscription_id,
@@ -534,17 +536,18 @@ impl SubStreamContract {
         }
 
         let refund = subscription.balance;
+
+        subscription.balance = 0;
+        subscription.status = STATUS_CANCELLED;
+        put_subscription(&env, subscription_id, &subscription);
+
         if refund > 0 {
-            token::Client::new(&env, &plan.token).transfer(
+            token::Client::new(&env, &subscription.token).transfer(
                 &env.current_contract_address(),
                 &subscription.subscriber,
                 &refund,
             );
         }
-
-        subscription.balance = 0;
-        subscription.status = STATUS_CANCELLED;
-        put_subscription(&env, subscription_id, &subscription);
 
         Cancelled {
             subscription_id,
@@ -567,6 +570,27 @@ impl SubStreamContract {
 
     pub fn get_subscription(env: Env, subscription_id: u64) -> Result<Subscription, Error> {
         get_subscription_internal(&env, subscription_id)
+    }
+
+    /// Permissionless TTL maintenance for a plan record. Callers should bump
+    /// plans alongside subscriptions in long-idle deployments.
+    pub fn bump_plan(env: Env, plan_id: u64) -> Result<(), Error> {
+        let key = DataKey::Plan(plan_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::PlanNotFound);
+        }
+        extend_persistent_ttl(&env, &key);
+        Ok(())
+    }
+
+    /// Permissionless TTL maintenance for a subscription record.
+    pub fn bump_subscription(env: Env, subscription_id: u64) -> Result<(), Error> {
+        let key = DataKey::Subscription(subscription_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::SubscriptionNotFound);
+        }
+        extend_persistent_ttl(&env, &key);
+        Ok(())
     }
 
     pub fn get_plan_count(env: Env) -> u64 {
@@ -619,22 +643,26 @@ fn validate_terms(amount: i128, interval: u64) -> Result<(), Error> {
     Ok(())
 }
 
-fn next_id(env: &Env, key: DataKey) -> u64 {
+fn next_id(env: &Env, key: DataKey) -> Result<u64, Error> {
     let current: u64 = env.storage().instance().get(&key).unwrap_or(0);
-    let next = current.saturating_add(1);
+    let next = current.checked_add(1).ok_or(Error::Overflow)?;
     env.storage().instance().set(&key, &next);
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_THRESHOLD, INSTANCE_EXTEND);
-    next
+    Ok(next)
+}
+
+fn extend_persistent_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, PERSISTENT_THRESHOLD, PERSISTENT_EXTEND);
 }
 
 fn put_plan(env: &Env, plan_id: u64, plan: &Plan) {
     let key = DataKey::Plan(plan_id);
     env.storage().persistent().set(&key, plan);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_EXTEND);
+    extend_persistent_ttl(env, &key);
 }
 
 fn get_plan_internal(env: &Env, plan_id: u64) -> Result<Plan, Error> {
@@ -647,24 +675,34 @@ fn get_plan_internal(env: &Env, plan_id: u64) -> Result<Plan, Error> {
 /// Cancel a subscription whose grace period has expired and refund any escrow
 /// left in the contract. Shared by `charge` and `top_up` so both entry points
 /// enforce the same deadline.
-fn cancel_expired(
-    env: &Env,
-    subscription_id: u64,
-    subscription: &mut Subscription,
-    token: &Address,
-) {
+fn maybe_expire(env: &Env, subscription_id: u64, subscription: &mut Subscription) -> bool {
+    if subscription.status != STATUS_CANCELLED
+        && env.ledger().timestamp()
+            > subscription
+                .next_charge
+                .saturating_add(subscription.grace_period)
+        && subscription.balance < subscription.amount
+    {
+        cancel_expired(env, subscription_id, subscription);
+        return true;
+    }
+    false
+}
+
+fn cancel_expired(env: &Env, subscription_id: u64, subscription: &mut Subscription) {
     let refund = subscription.balance;
+
+    subscription.balance = 0;
+    subscription.status = STATUS_CANCELLED;
+    put_subscription(env, subscription_id, subscription);
+
     if refund > 0 {
-        token::Client::new(env, token).transfer(
+        token::Client::new(env, &subscription.token).transfer(
             &env.current_contract_address(),
             &subscription.subscriber,
             &refund,
         );
     }
-
-    subscription.balance = 0;
-    subscription.status = STATUS_CANCELLED;
-    put_subscription(env, subscription_id, subscription);
 
     Cancelled {
         subscription_id,
@@ -678,9 +716,7 @@ fn cancel_expired(
 fn put_subscription(env: &Env, subscription_id: u64, subscription: &Subscription) {
     let key = DataKey::Subscription(subscription_id);
     env.storage().persistent().set(&key, subscription);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_EXTEND);
+    extend_persistent_ttl(env, &key);
 }
 
 fn get_subscription_internal(env: &Env, subscription_id: u64) -> Result<Subscription, Error> {
@@ -699,11 +735,12 @@ fn get_index(env: &Env, key: DataKey) -> Vec<u64> {
 
 fn push_index(env: &Env, key: DataKey, id: u64) {
     let mut ids = get_index(env, key.clone());
+    if ids.len() >= MAX_INDEX_IDS {
+        ids.pop_front();
+    }
     ids.push_back(id);
     env.storage().persistent().set(&key, &ids);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_EXTEND);
+    extend_persistent_ttl(env, &key);
 }
 
 // ---------------------------------------------------------------------------

@@ -29,34 +29,43 @@ function isIndexedEvent(value: unknown): value is IndexedEvent {
 
 export class EventStore {
   private state: IndexerState = { lastLedger: null, events: [] };
+  private counts: Record<string, number> = {};
 
   constructor(
     private readonly stateFile: string,
     private readonly maxEvents: number,
   ) {}
 
-  async load(): Promise<void> {
+  /** Returns true when a corrupt state file was quarantined. */
+  async load(): Promise<boolean> {
     let raw: string;
     try {
       raw = await readFile(this.stateFile, "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw error;
     }
 
-    const parsed = JSON.parse(raw) as Partial<IndexerState>;
-    if (!Array.isArray(parsed.events)) {
-      throw new Error(`Invalid indexer state in ${this.stateFile}`);
-    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<IndexerState>;
+      if (!Array.isArray(parsed.events)) {
+        throw new Error("events must be an array");
+      }
 
-    this.state = {
-      cursor: typeof parsed.cursor === "string" ? parsed.cursor : undefined,
-      startLedger:
-        typeof parsed.startLedger === "number" ? parsed.startLedger : undefined,
-      lastLedger:
-        typeof parsed.lastLedger === "number" ? parsed.lastLedger : null,
-      events: parsed.events.filter(isIndexedEvent),
-    };
+      this.state = {
+        cursor: typeof parsed.cursor === "string" ? parsed.cursor : undefined,
+        startLedger:
+          typeof parsed.startLedger === "number" ? parsed.startLedger : undefined,
+        lastLedger:
+          typeof parsed.lastLedger === "number" ? parsed.lastLedger : null,
+        events: parsed.events.filter(isIndexedEvent),
+      };
+      this.rebuildCounts();
+      return false;
+    } catch {
+      await this.quarantine();
+      return true;
+    }
   }
 
   get cursor(): string | undefined {
@@ -73,6 +82,10 @@ export class EventStore {
 
   get size(): number {
     return this.state.events.length;
+  }
+
+  get eventCounts(): Readonly<Record<string, number>> {
+    return { ...this.counts };
   }
 
   initialize(startLedger: number): void {
@@ -104,12 +117,17 @@ export class EventStore {
     this.state.events = this.state.events
       .sort(compareEvents)
       .slice(0, this.maxEvents);
+    this.rebuildCounts();
     this.state.cursor = cursor;
     this.state.lastLedger = lastLedger;
     return added;
   }
 
   query({ subscriber, subscriptionId, limit }: EventQuery): IndexedEvent[] {
+    const bounded =
+      Number.isFinite(limit) && limit > 0
+        ? Math.min(Math.floor(limit), 500)
+        : 100;
     return this.state.events
       .filter((event) => {
         if (subscriber && event.subscriber !== subscriber) return false;
@@ -118,7 +136,7 @@ export class EventStore {
         }
         return true;
       })
-      .slice(0, limit);
+      .slice(0, bounded);
   }
 
   async persist(): Promise<void> {
@@ -126,6 +144,23 @@ export class EventStore {
     const temporary = `${this.stateFile}.tmp`;
     await writeFile(temporary, `${JSON.stringify(this.state, null, 2)}\n`);
     await rename(temporary, this.stateFile);
+  }
+
+  private rebuildCounts(): void {
+    const counts: Record<string, number> = {};
+    for (const event of this.state.events) {
+      counts[event.kind] = (counts[event.kind] ?? 0) + 1;
+    }
+    this.counts = counts;
+  }
+
+  private async quarantine(): Promise<void> {
+    const suffix = new Date().toISOString().replace(/[:.]/g, "-");
+    await rename(this.stateFile, `${this.stateFile}.corrupt-${suffix}`).catch(
+      () => undefined,
+    );
+    this.state = { lastLedger: null, events: [] };
+    this.counts = {};
   }
 }
 

@@ -6,41 +6,11 @@ import {
   outcomeLabel,
   SubStreamClient,
 } from "@substream/sdk";
+import { loadConfig } from "./config";
 
 const flags = new Set(process.argv.slice(2));
 const once = flags.has("--once");
 const dryRun = flags.has("--dry-run") || process.env.DRY_RUN === "1";
-
-interface KeeperConfig {
-  contractId: string;
-  rpcUrl: string;
-  networkPassphrase: string;
-  secret: string;
-  pollIntervalMs: number;
-  maxSubscriptions: number;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Missing required environment variable ${name}`);
-  }
-  return value;
-}
-
-function loadConfig(): KeeperConfig {
-  return {
-    contractId: requireEnv("CONTRACT_ID"),
-    rpcUrl:
-      process.env.RPC_URL?.trim() || "https://soroban-testnet.stellar.org",
-    networkPassphrase:
-      process.env.NETWORK_PASSPHRASE?.trim() ||
-      "Test SDF Network ; September 2015",
-    secret: requireEnv("KEEPER_SECRET"),
-    pollIntervalMs: Number(process.env.POLL_INTERVAL_MS ?? "30000"),
-    maxSubscriptions: Number(process.env.MAX_SUBSCRIPTIONS ?? "200"),
-  };
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,6 +29,7 @@ async function main(): Promise<void> {
     contractId: config.contractId,
     rpcUrl: config.rpcUrl,
     networkPassphrase: config.networkPassphrase,
+    allowHttp: config.allowHttp,
   });
   const signer = keypairSigner(keypair);
 
@@ -70,14 +41,20 @@ async function main(): Promise<void> {
   }
 
   let stopping = false;
-  process.on("SIGINT", () => {
-    log("SIGINT received, finishing current tick");
+  let forceExit: NodeJS.Timeout | undefined;
+  const stop = (signal: string) => {
+    log(`${signal} received, finishing current tick`);
     stopping = true;
-  });
-  process.on("SIGTERM", () => {
-    log("SIGTERM received, finishing current tick");
-    stopping = true;
-  });
+    if (!forceExit) {
+      forceExit = setTimeout(() => {
+        log("graceful shutdown timed out; exiting");
+        process.exit(1);
+      }, 30_000);
+      forceExit.unref();
+    }
+  };
+  process.on("SIGINT", () => stop("SIGINT"));
+  process.on("SIGTERM", () => stop("SIGTERM"));
 
   while (!stopping) {
     try {
@@ -143,6 +120,7 @@ async function main(): Promise<void> {
     await sleep(config.pollIntervalMs);
   }
 
+  if (forceExit) clearTimeout(forceExit);
   log("stopped");
 }
 

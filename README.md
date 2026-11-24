@@ -53,6 +53,13 @@ See [docs/README.md](docs/README.md) for a suggested reading order.
 - **[Post-Launch and Growth](docs/post-launch-growth.md)** — Growth Hack, Public Goods Award, Stellar Liquidity Award, BD support, and additional Build Awards.
 - **[RFP Response Guide](docs/rfp-response-guide.md)** — RFP-specific guidance: spec compliance, DX, maintenance, and domain expertise.
 
+### [substream/](substream/)
+
+A Soroban recurring-payment prototype with an escrow contract, TypeScript SDK,
+React dApp, keeper, event indexer, and an SCF Open Track application draft.
+Start with the [SubStream README](substream/README.md) and the
+[submission checklist](substream/docs/submission-checklist.md).
+
 ## SCF Official Resources
 
 | Resource | Link |

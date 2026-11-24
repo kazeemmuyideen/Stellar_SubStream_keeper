@@ -17,7 +17,9 @@ export function parseAmount(value: string, decimals: number): bigint {
 }
 
 export function formatAmount(value: bigint, decimals: number): string {
-  if (decimals <= 0) return value.toString();
+  if (!Number.isInteger(decimals) || decimals <= 0 || decimals > 18) {
+    return value.toString();
+  }
   const base = 10n ** BigInt(decimals);
   const whole = value / base;
   const fraction = (value % base)
@@ -28,8 +30,9 @@ export function formatAmount(value: bigint, decimals: number): string {
 }
 
 export function formatDuration(seconds: bigint): string {
+  if (seconds <= 0n) return "0m";
   const value = Number(seconds);
-  if (value <= 0) return "0m";
+  if (!Number.isSafeInteger(value)) return `${seconds}s`;
   if (value % 86_400 === 0) return `${value / 86_400}d`;
   if (value % 3_600 === 0) return `${value / 3_600}h`;
   if (value % 60 === 0) return `${value / 60}m`;

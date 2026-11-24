@@ -89,9 +89,10 @@ price increases and makes the contract's behavior easy to audit.
 | `SubscriberSubscriptions(address)` | persistent | `Vec<u64>` |
 
 Persistent entries are bumped to a 90-day TTL when written, with a 30-day
-threshold. Instance entries are bumped on every new ID. Long-idle subscriptions
-can therefore be revived by a keeper or by the subscriber; a production
-deployment should run a scheduled TTL bumper for very large catalogs.
+threshold. Instance entries are bumped on every new ID. The permissionless
+`bump_plan` and `bump_subscription` helpers let a keeper or indexer keep
+long-idle records alive. Refunds do not depend on this maintenance because
+subscriptions snapshot the token address.
 
 ## 4. Lifecycle
 
@@ -118,28 +119,30 @@ deployment should run a scheduled TTL bumper for very large catalogs.
 
 A cancellation is terminal. A cancelled subscription cannot be topped up or
 charged again; the subscriber must create a new subscription. The grace deadline
-is enforced by both `charge` and `top_up`: a top-up after the deadline cannot
-revive a past-due subscription. It refunds any remaining escrow, cancels the
-subscription, and emits `cancelled` with reason `1`.
+is enforced by both `charge` and `top_up` for any subscription whose escrow is
+short, even if it still shows `Active` because nobody called `charge`. A late
+top-up refunds any remaining escrow, cancels the subscription, and emits
+`cancelled` with reason `1`.
 
 ## 5. Charge algorithm
 
 `charge(subscription_id)` is the protocol's core:
 
 1. Load the subscription. If it is cancelled, return `Cancelled`.
-2. Load the plan. If `now < next_charge`, return `NotDue`.
-3. If the plan is paused, return `PlanInactive` without changing the
+2. If `now < next_charge`, return `NotDue` without loading the plan.
+3. Finalize an expired, underfunded subscription before touching the plan:
+   transfer any remaining balance to the subscriber, mark it cancelled, emit
+   `cancelled` (reason `1`), and return `Cancelled`. This also applies when the
+   plan is paused or its record is archived.
+4. Load the plan. If it is paused, return `PlanInactive` without changing the
    subscription. The schedule does not advance while paused.
-4. If `balance < amount`:
-   - If `now > next_charge + grace_period`, transfer any remaining balance to
-     the subscriber, mark the subscription cancelled, emit `cancelled`
-     (reason `1`), and return `Cancelled`.
-   - Otherwise mark the subscription `PastDue`, emit `pay_fail`, and return
-     `InsufficientBalance`. `next_charge` does not advance, so a top-up is
-     immediately usable.
-5. Otherwise transfer `amount` from the contract to the merchant, decrement the
+5. If `balance < amount`, mark the subscription `PastDue`, emit `pay_fail`, and
+   return `InsufficientBalance`. `next_charge` does not advance, so a top-up is
+   immediately usable.
+6. Otherwise transfer `amount` from the contract to the merchant, decrement the
    balance, increment `cycles_paid`, set `next_charge = now + interval`, mark
-   `Active`, and emit `charged`.
+   `Active`, and emit `charged`. The counter and schedule use checked arithmetic
+   and return `Overflow` instead of wrapping at their maximum values.
 
 Important properties:
 
@@ -212,8 +215,11 @@ disables further charges rather than wrapping.
 ### TTL / archival
 
 Soroban persistent entries can be archived if untouched. This implementation
-extends TTL on every write. A production deployment should add a periodic
-`extend_ttl` job for subscriptions that are far from their next charge.
+extends TTL on every write and exposes permissionless `bump_plan` and
+`bump_subscription` helpers. A production deployment should call them
+periodically for records that are far from their next charge. Subscriptions
+snapshot the token address, so a refund remains possible even if the plan
+record is archived.
 
 ### Trust assumptions
 

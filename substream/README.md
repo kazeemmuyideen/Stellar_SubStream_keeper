@@ -73,6 +73,11 @@ A pre-audit beta is deployed on Stellar testnet:
 | --- | --- | --- |
 | Testnet | `CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN) |
 
+The deployed WASM is older than the current source: the grace-period, TTL, and
+refund hardening described here is source-only until the contract is redeployed.
+See [`deployments/testnet.json`](deployments/testnet.json) for the recorded
+hashes and the outstanding redeploy step.
+
 The deployment used native XLM as the SAC token. Plan #1 is a live demo plan:
 **1 XLM per 30 days with a one-day grace period**. Use the Merchant tab to
 create your own plan, or point a plan at a testnet USDC SAC.
@@ -255,9 +260,12 @@ and API details.
 | `get_plan`, `get_subscription`, `quote`, `is_due` | none | Read helpers |
 | `get_plan_count`, `get_subscription_count` | none | Discovery |
 | `get_merchant_plans`, `get_subscriber_subscriptions` | none | Indexed lookups |
+| `bump_plan`, `bump_subscription` | none | Permissionless TTL maintenance |
 
 Full signatures, error codes, outcomes, and events are documented in
-[`docs/contract-api.md`](docs/contract-api.md).
+[`docs/contract-api.md`](docs/contract-api.md). SDK discovery helpers scan at
+most 500 IDs per call, and the indexer `/events` endpoint returns at most 500
+events per request; larger limits are clamped rather than rejected.
 
 ## Security model
 
@@ -269,9 +277,10 @@ Full signatures, error codes, outcomes, and events are documented in
   `require_auth` for the party it acts for. `charge` is deliberately open and
   can only move funds along the pre-agreed schedule.
 - **Refund path is unconditional for subscribers.** A subscriber can always
-  cancel and recover the unused balance.
-- **Bounded storage growth.** IDs and per-address indexes are stored in
-  persistent storage with TTL extension.
+  cancel and recover the unused balance; subscriptions snapshot the token so a
+  refund does not depend on the plan record.
+- **Bounded storage growth.** Per-address indexes keep only the most recent 100
+  IDs, and persistent records support permissionless TTL bumps.
 - **SAC-only assumption.** The plan token must be a standard Stellar Asset
   Contract. Do not point a plan at an arbitrary malicious contract.
 

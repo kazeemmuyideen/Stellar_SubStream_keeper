@@ -7,16 +7,16 @@ verified without private accounts is already done.
 
 - [x] Soroban contract with plans, escrow subscriptions, permissionless
       charges, grace periods, refunds, and typed events.
-- [x] 11 contract tests passing; `cargo fmt --check` and
+- [x] 19 contract tests passing; `cargo fmt --check` and
       `cargo clippy --all-targets -- -D warnings` clean.
 - [x] Reproducible WASM build documented; current source hash
-      `e9baf8dbee117c6b156bc6c8aee242e17f71bf14cf34785c179542f2254cee3a`.
+      `159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7`.
       The live testnet deployment still runs the previous WASM until it is
       redeployed.
-- [x] TypeScript SDK, React dApp, and keeper service; typecheck and production
-      build pass.
-- [x] CI workflow covering contract fmt/clippy/tests/WASM plus TypeScript
-      typecheck/build.
+- [x] TypeScript SDK, React dApp, keeper, and indexer; tests, typecheck, audit,
+      and production build pass.
+- [x] Root CI workflow covering skills/manifests/secrets, contract
+      fmt/clippy/tests/WASM, and TypeScript audit/typecheck/tests/build.
 - [x] Live testnet deployment with recorded transaction links in
       [`../deployments/testnet.json`](../deployments/testnet.json).
 - [x] One-command deploy (`scripts/deploy.sh`) and keeper setup
@@ -35,9 +35,11 @@ verified without private accounts is already done.
       public branch).
 - [ ] Public demo URL for the dApp (for example Vercel, Netlify, or Cloudflare
       Pages). Set the `VITE_*` variables from `apps/web/.env.example`.
-- [ ] Redeploy the contract with the lifecycle fix, then update `wasmHash` and
-      the transaction links in `deployments/testnet.json` and re-run
-      `scripts/demo.sh` for fresh evidence.
+- [ ] Redeploy the contract with the lifecycle and hardening fixes, then update
+      `wasmHash` and the transaction links in `deployments/testnet.json` and
+      re-run `scripts/demo.sh` for fresh evidence. Use a fresh contract or plan
+      a migration: the hardened `Subscription` struct adds a snapshotted token
+      field and is not storage-compatible with the live deployment.
 - [ ] Demo video URL. Suggested flow is in
       [`demo-video-script.md`](demo-video-script.md).
 - [ ] Confirm the $60,000 Open Track budget and tranche split, or adjust the
@@ -49,12 +51,14 @@ verified without private accounts is already done.
 
 ```bash
 cd substream
-cargo test
+cargo test --workspace
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 stellar contract build
 npm ci
+npm audit --audit-level=high
 npm run typecheck
+npm test
 npm run build
 ./scripts/demo.sh --interval 10 --cycles 2
 ```

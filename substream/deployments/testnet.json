@@ -4,8 +4,8 @@
   "rpcUrl": "https://soroban-testnet.stellar.org",
   "contractId": "CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN",
   "wasmHash": "c6a7ccd0b98304b2eb4d2ef7739d0fb0b4f28478f74b9cd1e5302d54ac5bb786",
-  "sourceWasmHash": "e9baf8dbee117c6b156bc6c8aee242e17f71bf14cf34785c179542f2254cee3a",
-  "sourceNote": "Live contract still runs wasmHash; redeploy to pick up the lifecycle fix in sourceWasmHash.",
+  "sourceWasmHash": "159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7",
+  "sourceNote": "Live contract still runs wasmHash. sourceWasmHash includes grace-period, TTL, and refund hardening plus a snapshotted token field; redeploy to a fresh contract or migrate existing subscription records before use.",
   "token": {
     "symbol": "XLM (native SAC)",
     "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",

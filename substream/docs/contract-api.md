@@ -26,6 +26,7 @@ pub struct Plan {
 ```rust
 pub struct Subscription {
     pub plan_id: u64,
+    pub token: Address,
     pub subscriber: Address,
     pub amount: i128,
     pub interval: u64,
@@ -144,9 +145,11 @@ or the plan is paused. A top-up that brings escrow up to at least one cycle
 sets the status back to `Active` (`PastDue` is kept when the balance is still
 short). Emits `topped_up` when a deposit is made.
 
-If the subscription is `PastDue` and `now > next_charge + grace_period`, no
-deposit is taken: the subscription is cancelled, any remaining escrow is
-refunded, `cancelled` with reason `1` is emitted, and `0` is returned.
+If escrow is short and `now > next_charge + grace_period`, no deposit is taken:
+the subscription is cancelled, any remaining escrow is refunded, `cancelled`
+with reason `1` is emitted, and `0` is returned. This deadline applies to every
+subscription with a short balance, including one that remains `Active` because
+nobody called `charge`, and it is enforced even when the plan is paused.
 
 ### `charge`
 
@@ -198,7 +201,12 @@ pub fn get_merchant_plans(env: Env, merchant: Address) -> Vec<u64>
 pub fn get_subscriber_subscriptions(env: Env, subscriber: Address) -> Vec<u64>
 pub fn is_due(env: Env, subscription_id: u64) -> Result<bool, Error>
 pub fn quote(env: Env, plan_id: u64, cycles: u32) -> Result<i128, Error>
+pub fn bump_plan(env: Env, plan_id: u64) -> Result<(), Error>
+pub fn bump_subscription(env: Env, subscription_id: u64) -> Result<(), Error>
 ```
+
+`bump_plan` and `bump_subscription` are permissionless TTL maintenance helpers.
+They do not require auth and are safe for a keeper or indexer to call.
 
 `is_due` is `status != Cancelled && now >= next_charge`. It does not check plan
 activity or balance. `quote` returns `amount * cycles`.
@@ -214,7 +222,7 @@ the record id, and a data map keyed by field name.
 | Event | Topics | Data map keys |
 | --- | --- | --- |
 | `plan_new` | `("plan_new", plan_id)` | `merchant`, `token`, `amount`, `interval`, `grace_period` |
-| `plan_upd` | `("plan_upd", plan_id)` | `amount`, `interval`, `active` |
+| `plan_upd` | `("plan_upd", plan_id)` | `amount`, `interval`, `grace_period`, `active` |
 | `subscribe` | `("subscribe", subscription_id)` | `plan_id`, `subscriber`, `deposit`, `next_charge` |
 | `topped_up` | `("topped_up", subscription_id)` | `subscriber`, `amount`, `balance` |
 | `charged` | `("charged", subscription_id)` | `plan_id`, `subscriber`, `merchant`, `amount`, `next_charge` |
@@ -232,6 +240,9 @@ Cancellation reasons: `0 = subscriber`, `1 = grace period expired`,
 | Instance counters | 30 days | 90 days |
 
 Constants assume ~5 second ledgers: `DAY_IN_LEDGERS = 17_280`.
+Subscriptions snapshot the token address, so a subscriber refund does not
+depend on the plan record still being live. For long-idle catalogs, run a
+scheduled job that calls `bump_plan` and `bump_subscription` periodically.
 
 ## CLI examples
 

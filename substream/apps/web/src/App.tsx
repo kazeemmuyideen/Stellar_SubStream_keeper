@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   ChargeOutcome,
@@ -41,10 +41,24 @@ async function fetchIndexedActivity(
     const url = `${config.indexerUrl.replace(/\/+$/, "")}/events?${query}`;
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error(`indexer returned ${response.status}`);
-    const payload = (await response.json()) as { events?: IndexedEvent[] };
-    return Array.isArray(payload.events) ? payload.events : [];
+
+    const contentLength = Number(response.headers.get("content-length") ?? "0");
+    if (contentLength > 1_000_000) {
+      throw new Error("indexer response is too large");
+    }
+    const text = await response.text();
+    if (text.length > 1_000_000) {
+      throw new Error("indexer response is too large");
+    }
+
+    const payload = JSON.parse(text) as { events?: unknown };
+    const events = Array.isArray(payload.events)
+      ? (payload.events as IndexedEvent[]).slice(0, 200)
+      : [];
+    return events;
   } catch {
     // The dApp still works without the indexer; ActivityList falls back to
     // the two milestones available from current contract state.
@@ -70,6 +84,15 @@ export default function App() {
   const [graceHours, setGraceHours] = useState("1");
   const [decimals, setDecimals] = useState("7");
   const [cycles, setCycles] = useState<Record<string, string>>({});
+  const refreshGeneration = useRef(0);
+
+  const parsedDecimals = Number(decimals);
+  const displayDecimals =
+    Number.isInteger(parsedDecimals) &&
+    parsedDecimals >= 0 &&
+    parsedDecimals <= 18
+      ? parsedDecimals
+      : 7;
 
   const hasContract = Boolean(config.contractId);
   const signer = useMemo(
@@ -83,6 +106,7 @@ export default function App() {
   const refresh = useCallback(
     async (activeClient = client, source = address) => {
       if (!activeClient || !source) return;
+      const generation = ++refreshGeneration.current;
       const [allPlans, subscriptionIds, everySubscription] =
         await Promise.all([
           activeClient.getAllPlans(source, 50),
@@ -93,6 +117,7 @@ export default function App() {
         activeClient.getSubscriptions(source, subscriptionIds),
         fetchIndexedActivity(source),
       ]);
+      if (generation !== refreshGeneration.current) return;
       setPlans(allPlans);
       setMySubscriptions(mine);
       setAllSubscriptions(everySubscription);
@@ -184,7 +209,14 @@ export default function App() {
       if (!tokenAddress) {
         throw new Error("Paste the SAC token contract address.");
       }
-      const amountBase = parseAmount(amount, Number(decimals));
+      if (
+        !Number.isInteger(parsedDecimals) ||
+        parsedDecimals < 0 ||
+        parsedDecimals > 18
+      ) {
+        throw new Error("Decimals must be an integer between 0 and 18.");
+      }
+      const amountBase = parseAmount(amount, parsedDecimals);
       const interval = BigInt(
         Math.round(Number(intervalDays) * 86_400),
       );
@@ -260,7 +292,7 @@ export default function App() {
             }
           : {
               kind: "ok",
-              text: `Subscription #${subscription.id} now holds ${formatAmount(balance, Number(decimals))} in escrow.`,
+              text: `Subscription #${subscription.id} now holds ${formatAmount(balance, displayDecimals)} in escrow.`,
               hash,
             },
       );
@@ -297,7 +329,7 @@ export default function App() {
       });
       setNotice({
         kind: "ok",
-        text: `Subscription #${subscription.id} cancelled. Refunded ${formatAmount(refund, Number(decimals))}.`,
+        text: `Subscription #${subscription.id} cancelled. Refunded ${formatAmount(refund, displayDecimals)}.`,
         hash,
       });
       await refresh();
@@ -411,7 +443,7 @@ export default function App() {
             />
             <Stat
               label="Escrow under management"
-              value={formatAmount(totalEscrow, Number(decimals))}
+              value={formatAmount(totalEscrow, displayDecimals)}
               hint="token base units"
             />
           </div>
@@ -503,7 +535,7 @@ export default function App() {
                       <PlanCard
                         key={plan.id.toString()}
                         plan={plan}
-                        decimals={Number(decimals)}
+                        decimals={displayDecimals}
                         cycles={cycles[`plan-${plan.id}`] ?? "3"}
                         onCyclesChange={(value) =>
                           setCycles((current) => ({
@@ -537,7 +569,7 @@ export default function App() {
                       <SubscriptionCard
                         key={subscription.id.toString()}
                         subscription={subscription}
-                        decimals={Number(decimals)}
+                        decimals={displayDecimals}
                         cycles={cycles[`sub-${subscription.id}`] ?? "1"}
                         onCyclesChange={(value) =>
                           setCycles((current) => ({
@@ -566,7 +598,7 @@ export default function App() {
                 events={activityEvents}
                 live={activityLive}
                 subscriptions={mySubscriptions}
-                decimals={Number(decimals)}
+                decimals={displayDecimals}
                 explorerBase={config.explorerBase}
               />
               </section>
@@ -649,7 +681,7 @@ export default function App() {
                           <PlanCard
                             key={plan.id.toString()}
                             plan={plan}
-                            decimals={Number(decimals)}
+                            decimals={displayDecimals}
                             cycles={cycles[`plan-${plan.id}`] ?? "3"}
                             onCyclesChange={(value) =>
                               setCycles((current) => ({
@@ -691,7 +723,7 @@ export default function App() {
                           <h3>
                             {formatAmount(
                               subscription.amount,
-                              Number(decimals),
+                              displayDecimals,
                             )}{" "}
                             due for plan #{subscription.planId.toString()}
                           </h3>
