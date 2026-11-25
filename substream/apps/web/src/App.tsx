@@ -8,10 +8,17 @@ import {
   SubStreamClient,
   SubscriptionStatus,
   type IndexedEvent,
+  type MerchantMetrics,
+  type MetricsResponse,
   type Plan,
   type Subscription,
+  type TokenAmount,
 } from "@substream/sdk";
 import { config } from "./config";
+import {
+  isMetricsResponse,
+  MAX_METRICS_RESPONSE_CHARS,
+} from "./metrics";
 import { connectWallet, freighterSigner } from "./wallet";
 import {
   errorMessage,
@@ -32,13 +39,16 @@ interface Notice {
 
 const nowSeconds = () => BigInt(Math.floor(Date.now() / 1_000));
 
-async function fetchIndexedActivity(
-  subscriber: string,
-): Promise<IndexedEvent[] | null> {
+async function fetchIndexerJson<T>(
+  path: string,
+  params: Record<string, string> = {},
+  maxChars = 1_000_000,
+): Promise<T | null> {
   if (!config.indexerUrl) return null;
   try {
-    const query = new URLSearchParams({ subscriber, limit: "200" });
-    const url = `${config.indexerUrl.replace(/\/+$/, "")}/events?${query}`;
+    const query = new URLSearchParams(params).toString();
+    const suffix = query ? `?${query}` : "";
+    const url = `${config.indexerUrl.replace(/\/+$/, "")}${path}${suffix}`;
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(10_000),
@@ -46,24 +56,49 @@ async function fetchIndexedActivity(
     if (!response.ok) throw new Error(`indexer returned ${response.status}`);
 
     const contentLength = Number(response.headers.get("content-length") ?? "0");
-    if (contentLength > 1_000_000) {
+    if (contentLength > maxChars) {
       throw new Error("indexer response is too large");
     }
     const text = await response.text();
-    if (text.length > 1_000_000) {
+    if (text.length > maxChars) {
       throw new Error("indexer response is too large");
     }
 
-    const payload = JSON.parse(text) as { events?: unknown };
-    const events = Array.isArray(payload.events)
-      ? (payload.events as IndexedEvent[]).slice(0, 200)
-      : [];
-    return events;
+    return JSON.parse(text) as T;
   } catch {
-    // The dApp still works without the indexer; ActivityList falls back to
-    // the two milestones available from current contract state.
     return null;
   }
+}
+
+async function fetchIndexedActivity(
+  subscriber: string,
+): Promise<IndexedEvent[] | null> {
+  const payload = await fetchIndexerJson<{ events?: unknown }>("/events", {
+    subscriber,
+    limit: "200",
+  });
+  if (!payload || !Array.isArray(payload.events)) return null;
+  return (payload.events as IndexedEvent[]).slice(0, 200);
+}
+
+async function fetchMerchantMetrics(
+  merchant: string,
+): Promise<MetricsResponse | null> {
+  const payload = await fetchIndexerJson<unknown>(
+    "/metrics",
+    { merchant },
+    MAX_METRICS_RESPONSE_CHARS,
+  );
+  return isMetricsResponse(payload) ? payload : null;
+}
+
+async function fetchNetworkMetrics(): Promise<MetricsResponse | null> {
+  const payload = await fetchIndexerJson<unknown>(
+    "/metrics",
+    {},
+    MAX_METRICS_RESPONSE_CHARS,
+  );
+  return isMetricsResponse(payload) ? payload : null;
 }
 
 export default function App() {
@@ -74,6 +109,10 @@ export default function App() {
   const [allSubscriptions, setAllSubscriptions] = useState<Subscription[]>([]);
   const [activityEvents, setActivityEvents] = useState<IndexedEvent[]>([]);
   const [activityLive, setActivityLive] = useState(false);
+  const [merchantMetrics, setMerchantMetrics] =
+    useState<MetricsResponse | null>(null);
+  const [networkMetrics, setNetworkMetrics] =
+    useState<MetricsResponse | null>(null);
   const [tab, setTab] = useState<Tab>("market");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -84,6 +123,7 @@ export default function App() {
   const [graceHours, setGraceHours] = useState("1");
   const [decimals, setDecimals] = useState("7");
   const [cycles, setCycles] = useState<Record<string, string>>({});
+  const [metricsTick, setMetricsTick] = useState(0);
   const refreshGeneration = useRef(0);
 
   const parsedDecimals = Number(decimals);
@@ -123,6 +163,9 @@ export default function App() {
       setAllSubscriptions(everySubscription);
       setActivityEvents(indexed ?? []);
       setActivityLive(indexed !== null);
+      // Contract writes can change metrics; re-read them once the RPC state
+      // used by this refresh is committed.
+      setMetricsTick((tick) => tick + 1);
     },
     [client, address],
   );
@@ -133,6 +176,29 @@ export default function App() {
       setNotice({ kind: "err", text: errorMessage(error) }),
     );
   }, [client, address, refresh]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setMetricsTick((tick) => tick + 1);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!address) setMerchantMetrics(null);
+    void Promise.all([
+      fetchNetworkMetrics(),
+      address ? fetchMerchantMetrics(address) : Promise.resolve(null),
+    ]).then(([network, merchant]) => {
+      if (!active) return;
+      setNetworkMetrics(network);
+      if (address) setMerchantMetrics(merchant);
+    });
+    return () => {
+      active = false;
+    };
+  }, [address, metricsTick]);
 
   const merchantPlans = useMemo(
     () => plans.filter((plan) => plan.merchant === address),
@@ -446,6 +512,11 @@ export default function App() {
               value={formatAmount(totalEscrow, displayDecimals)}
               hint="token base units"
             />
+            <Stat
+              label="Indexed charges"
+              value={(networkMetrics?.network.charges ?? 0).toString()}
+              hint={networkMetrics ? "public indexer metrics" : "indexer offline"}
+            />
           </div>
         </section>
 
@@ -609,6 +680,13 @@ export default function App() {
                 <SectionHeading
                   title="Merchant console"
                   description="Create a reusable plan, then pause or resume it. Existing subscriptions keep their original terms."
+                />
+                <MerchantAnalytics
+                  metrics={merchantMetrics?.merchant}
+                  live={merchantMetrics !== null}
+                  configured={Boolean(config.indexerUrl)}
+                  decimals={displayDecimals}
+                  indexedEvents={merchantMetrics?.indexedEvents ?? null}
                 />
                 <div className="merchant-layout">
                   <form className="card form-card" onSubmit={handleCreatePlan}>
@@ -776,6 +854,176 @@ function Stat({
       <strong>{value}</strong>
       {hint && <span className="stat-hint">{hint}</span>}
     </div>
+  );
+}
+
+function formatTokenAmounts(
+  amounts: TokenAmount[],
+  decimals: number,
+): string {
+  if (amounts.length === 0) return "—";
+  return amounts
+    .map(
+      (item) =>
+        `${activityAmount(item.amount, decimals)} · ${shortAddress(item.token)}`,
+    )
+    .join(", ");
+}
+
+function TokenAmountList({
+  amounts,
+  decimals,
+  emptyLabel,
+}: {
+  amounts: TokenAmount[];
+  decimals: number;
+  emptyLabel: string;
+}) {
+  if (amounts.length === 0) return <p className="muted">{emptyLabel}</p>;
+  return (
+    <div className="token-amounts">
+      {amounts.map((item) => (
+        <div key={item.token}>
+          <span title={item.token}>{shortAddress(item.token)}</span>
+          <strong>{activityAmount(item.amount, decimals)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MerchantAnalytics({
+  metrics,
+  live,
+  configured,
+  decimals,
+  indexedEvents,
+}: {
+  metrics?: MerchantMetrics;
+  live: boolean;
+  configured: boolean;
+  decimals: number;
+  indexedEvents: number | null;
+}) {
+  const attempts = metrics ? metrics.charges + metrics.failedCharges : 0;
+  const successRate =
+    metrics && attempts > 0
+      ? `${Math.round((metrics.charges / attempts) * 100)}%`
+      : "—";
+
+  return (
+    <section className="card analytics-card">
+      <div className="card-top">
+        <div>
+          <span className="eyebrow">Merchant analytics</span>
+          <h3>
+            {metrics
+              ? `Metrics for ${shortAddress(metrics.merchant)}`
+              : "No indexed merchant activity"}
+          </h3>
+        </div>
+        <span className={`pill ${live ? "pill-on" : "pill-off"}`}>
+          {live ? "Live" : "Offline"}
+        </span>
+      </div>
+
+      {!live ? (
+        <p className="muted">
+          {configured ? (
+            <>
+              The indexer is unreachable, so merchant metrics are temporarily
+              unavailable. Contract state and activity fallback still work.
+            </>
+          ) : (
+            <>
+              Set <code>VITE_INDEXER_URL</code> and run the indexer to populate
+              merchant metrics. Contract state and activity fallback still
+              work.
+            </>
+          )}
+        </p>
+      ) : !metrics ? (
+        <p className="muted">
+          No events are attributed to this wallet yet. Create a plan and accept
+          a subscription; metrics appear after the indexer catches up.
+        </p>
+      ) : (
+        <>
+          <div className="stats analytics-stats">
+            <Stat
+              label="Settled charges"
+              value={metrics.charges.toString()}
+              hint={`${metrics.failedCharges} failed`}
+            />
+            <Stat label="Success rate" value={successRate} />
+            <Stat
+              label="Subscriptions"
+              value={metrics.subscriptions.toString()}
+              hint={`${metrics.topUps} top-ups`}
+            />
+            <Stat
+              label="Cancellations"
+              value={metrics.cancellations.toString()}
+              hint="including expired grace periods"
+            />
+          </div>
+
+          <div className="analytics-columns">
+            <div>
+              <h4>Revenue by token</h4>
+              <TokenAmountList
+                amounts={metrics.charged}
+                decimals={decimals}
+                emptyLabel="No settled charges yet."
+              />
+              <h4>Refunds by token</h4>
+              <TokenAmountList
+                amounts={metrics.refunded}
+                decimals={decimals}
+                emptyLabel="No refunds yet."
+              />
+            </div>
+            <div>
+              <h4>By plan</h4>
+              {metrics.plans.length === 0 ? (
+                <p className="muted">No plan-level events yet.</p>
+              ) : (
+                <table className="metrics-table">
+                  <thead>
+                    <tr>
+                      <th>Plan</th>
+                      <th>Subs</th>
+                      <th>Charges</th>
+                      <th>Failed</th>
+                      <th>Settled</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.plans.map((plan) => (
+                      <tr key={plan.planId}>
+                        <td>#{plan.planId}</td>
+                        <td>{plan.subscriptions}</td>
+                        <td>{plan.charges}</td>
+                        <td>{plan.failedCharges}</td>
+                        <td title={formatTokenAmounts(plan.charged, decimals)}>
+                          {formatTokenAmounts(plan.charged, decimals)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          <p className="fineprint">
+            Cumulative counters from indexed events. Amounts use the decimals
+            selected above; {indexedEvents ?? 0} recent events are retained for
+            the Activity timeline.
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 

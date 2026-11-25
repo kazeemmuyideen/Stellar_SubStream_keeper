@@ -55,7 +55,12 @@ export function parseEvent(
       subscriptionId: isPlanEvent ? null : topicId,
       planId: isPlanEvent ? topicId : asString(data.plan_id),
       subscriber: asString(data.subscriber) ?? asString(data.merchant),
-      amount: asString(data.amount) ?? asString(data.deposit),
+      merchant: asString(data.merchant),
+      token: asString(data.token),
+      amount:
+        asString(data.amount) ??
+        asString(data.deposit) ??
+        asString(data.refund),
       balance: asString(data.balance),
       nextCharge: asString(data.next_charge),
       reason: asSmallInteger(data.reason),

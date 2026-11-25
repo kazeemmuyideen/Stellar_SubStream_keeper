@@ -39,6 +39,10 @@ export interface IndexedEvent {
   subscriptionId: string | null;
   planId: string | null;
   subscriber: string | null;
+  /** Merchant address when the event includes one (plan and charge events). */
+  merchant: string | null;
+  /** Token contract from the original plan event, when available. */
+  token: string | null;
   /** Base-unit amounts are strings so they survive JSON serialization. */
   amount: string | null;
   balance: string | null;
@@ -48,6 +52,58 @@ export interface IndexedEvent {
   ledger: number;
   /** Unix seconds from the ledger close time. */
   timestamp: number;
+}
+
+/** A cumulative base-unit amount grouped by SAC token contract. */
+export interface TokenAmount {
+  token: string;
+  amount: string;
+}
+
+export interface PlanMetrics {
+  planId: string;
+  subscriptions: number;
+  topUps: number;
+  charges: number;
+  failedCharges: number;
+  cancellations: number;
+  charged: TokenAmount[];
+  refunded: TokenAmount[];
+}
+
+export interface MerchantMetrics {
+  merchant: string;
+  subscriptions: number;
+  topUps: number;
+  charges: number;
+  failedCharges: number;
+  cancellations: number;
+  charged: TokenAmount[];
+  refunded: TokenAmount[];
+  /** Largest plans by successful charge count, capped by the indexer. */
+  plans: PlanMetrics[];
+}
+
+export interface NetworkMetrics {
+  plansCreated: number;
+  planUpdates: number;
+  subscriptions: number;
+  topUps: number;
+  charges: number;
+  failedCharges: number;
+  cancellations: number;
+  charged: TokenAmount[];
+  refunded: TokenAmount[];
+}
+
+export interface MetricsResponse {
+  network: NetworkMetrics;
+  /** Present only when the request includes a known merchant address. */
+  merchant?: MerchantMetrics;
+  /** Events currently retained by the indexer (not lifetime totals). */
+  indexedEvents: number;
+  lastLedger: number | null;
+  firstIndexedLedger: number | null;
 }
 
 export interface Plan {

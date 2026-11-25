@@ -44,7 +44,8 @@ All responses are JSON with permissive CORS headers.
 | --- | --- |
 | `GET /events` | Newest events, optionally filtered |
 | `GET /health` | Service status, contract id, last ledger, event count |
-| `GET /stats` | Event counts by kind |
+| `GET /stats` | Retained event counts by kind |
+| `GET /metrics` | Network metrics; add `merchant=G...` for merchant metrics |
 
 `GET /events` accepts `subscriber`, `subscriptionId`, and `limit` (1–500,
 default 100) query parameters:
@@ -54,17 +55,32 @@ curl 'http://localhost:8787/events?subscriber=G...&limit=50'
 ```
 
 Each event has a stable RPC `id`, the event `kind`, optional `subscriptionId`,
-`planId`, `subscriber`, `amount`, `balance`, `nextCharge`, and `reason`, plus
-`txHash`, `ledger`, and Unix-second `timestamp`. Base-unit amounts are strings
-so they survive JSON serialization.
+`planId`, `subscriber`, `merchant`, `token`, `amount`, `balance`, `nextCharge`,
+and `reason`, plus `txHash`, `ledger`, and Unix-second `timestamp`. Base-unit
+amounts are strings so they survive JSON serialization.
+
+`GET /metrics` returns cumulative counters derived from contract events:
+
+```bash
+curl 'http://localhost:8787/metrics'
+curl 'http://localhost:8787/metrics?merchant=G...'
+```
+
+The response includes network-wide plan, subscription, charge, failure, and
+cancellation counts, settled and refunded totals grouped by SAC token, and the
+bounds of the retained event window. A valid `merchant` parameter adds that
+merchant's counters plus a per-plan breakdown. Invalid merchant addresses are
+rejected with HTTP 400. Tokens that cannot be resolved from an indexed
+`plan_new` event are reported under `unknown`.
 
 ## DApp integration
 
 Set `VITE_INDEXER_URL` in `apps/web/.env` (for example
 `http://localhost:8787`). When the API is reachable, the Activity tab shows the
-indexed history with links to the transactions. If it is not configured or is
-unavailable, the tab falls back to the start and most recent charge derived
-from current contract state.
+indexed history with links to the transactions, the landing cards show public
+charge metrics, and the Merchant tab shows merchant and per-plan analytics. If
+it is not configured or is unavailable, the tab falls back to the start and
+most recent charge derived from current contract state.
 
 ## Limitations
 
@@ -74,3 +90,14 @@ from current contract state.
   at persistent storage for a production deployment.
 - A missed poll is retried from the last cursor; events are deduplicated by
   their RPC event id.
+- Metrics are cumulative since the indexer first observed the events and are
+  persisted with the state file. A persisted high-water ledger/event id prevents
+  a re-anchor from double-counting events that have already aged out of the
+  retained cache. They are not an audited accounting ledger; use contract state
+  and transaction links for settlement disputes.
+- Re-anchoring keeps previously computed metrics and retains the newest known
+  ledger in `/metrics`, but subscriptions first seen after a gap cannot be
+  attributed to an earlier plan event.
+- The dApp allows a larger body for `/metrics` than for `/events`, and rejects
+  payloads with more than 100 tokens per scope or 100 plans per merchant. Larger
+  deployments should page or prune the response.

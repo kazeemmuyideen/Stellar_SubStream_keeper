@@ -795,6 +795,88 @@ input::placeholder {
   gap: 14px;
 }
 
+.analytics-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.analytics-card h3 {
+  font-size: 18px;
+}
+
+.analytics-card h4 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.analytics-card h4:not(:first-child) {
+  margin-top: 20px;
+}
+
+.analytics-stats {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.analytics-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 24px;
+}
+
+.token-amounts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-amounts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.05);
+  font-size: 13px;
+}
+
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.metrics-table th,
+.metrics-table td {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.metrics-table th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.metrics-table td:last-child {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .analytics-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* -------------------------------------------------------- subscription */
 
 .subscription-card.is-muted {

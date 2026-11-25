@@ -13,8 +13,10 @@ verified without private accounts is already done.
       `159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7`.
       The live testnet deployment still runs the previous WASM until it is
       redeployed.
-- [x] TypeScript SDK, React dApp, keeper, and indexer; tests, typecheck, audit,
-      and production build pass.
+- [x] TypeScript SDK, React dApp, keeper, and indexer; 36 tests passing, plus
+      typecheck, audit, and production build.
+- [x] Public `/metrics` endpoint and merchant analytics: revenue by token,
+      charge success rate, plan breakdowns, failures, and refunds.
 - [x] Root CI workflow covering skills/manifests/secrets, contract
       fmt/clippy/tests/WASM, and TypeScript audit/typecheck/tests/build.
 - [x] Live testnet deployment with recorded transaction links in

@@ -255,15 +255,25 @@ would make writes unbounded.
 The bundled `services/indexer` supplies the off-chain read model. It polls
 Soroban RPC `getEvents` with a contract filter for the seven event topics
 (`plan_new`, `plan_upd`, `subscribe`, `topped_up`, `charged`, `pay_fail`,
-`cancelled`), decodes them, deduplicates by RPC event id, and persists a
-newest-first cache to a JSON file. An HTTP API exposes `/events` (with
-`subscriber`, `subscriptionId`, and `limit` filters), `/health`, and `/stats`.
-The dApp's Activity tab reads that API and falls back to current contract state
-when the indexer is unavailable, so the indexer is never a liveness dependency.
+`cancelled`), decodes them, deduplicates by RPC event id plus a persisted
+high-water ledger/event id, and persists a newest-first cache to a JSON file.
+An HTTP API exposes `/events` (with `subscriber`, `subscriptionId`, and `limit`
+filters), `/health`, `/stats`, and `/metrics`. Metrics are incremental, persisted
+counters grouped by merchant and plan: successful and failed charges, new
+subscriptions, top-ups, cancellations, and settled/refunded base-unit totals by
+token. `/metrics` can be called without a wallet for public network totals or
+with `merchant=G...` for a scoped view. The dApp validates those payloads, caps
+the displayed token and plan arrays, refreshes them every minute, and falls back
+to current contract state when the indexer is unavailable, so the indexer is
+never a liveness dependency.
 
 The indexer is read-only and holds no keys. Its state is a cache, not a source
 of truth: events are bounded by RPC retention, and a fresh deployment should
 set `START_LEDGER` to the contract's creation ledger to capture full history.
+Metrics are cumulative from the first event the indexer observed, not an audited
+ledger; deductions that are attributed from later events (for example, a token
+first seen in `plan_new`) are reported as `unknown` when they cannot be
+resolved.
 
 ## 10. Future work
 

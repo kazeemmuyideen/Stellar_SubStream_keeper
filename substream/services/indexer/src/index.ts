@@ -4,6 +4,7 @@ import { rpc } from "@stellar/stellar-sdk";
 import type { IndexedEvent } from "@substream/sdk";
 import { loadConfig } from "./config";
 import { parseEvent } from "./events";
+import { handleIndexerRequest } from "./http";
 import { collectPages, isCursorOutOfRangeError, withRetry } from "./poll";
 import { EventStore } from "./store";
 
@@ -109,14 +110,18 @@ async function main(): Promise<void> {
 
   const httpServer = createServer((request, response) => {
     const url = new URL(request.url ?? "/", `http://localhost:${config.port}`);
+    const result = handleIndexerRequest(
+      request.method,
+      url,
+      store,
+      config,
+    );
 
     if (request.method !== "GET" && request.method !== "OPTIONS") {
       request.resume();
-      sendJson(response, 405, { error: "Method not allowed" });
-      return;
     }
 
-    if (request.method === "OPTIONS") {
+    if (result === null) {
       response.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -126,45 +131,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (url.pathname === "/health") {
-      sendJson(response, 200, {
-        ok: true,
-        contractId: config.contractId,
-        lastLedger: store.lastLedger,
-        events: store.size,
-      });
-      return;
-    }
-
-    if (url.pathname === "/events") {
-      const rawLimit = Number(url.searchParams.get("limit") ?? "100");
-      const limit = Number.isFinite(rawLimit)
-        ? Math.min(Math.max(1, Math.floor(rawLimit)), 500)
-        : 100;
-      sendJson(response, 200, {
-        events: store.query({
-          subscriber: url.searchParams.get("subscriber") ?? undefined,
-          subscriptionId:
-            url.searchParams.get("subscriptionId") ?? undefined,
-          limit,
-        }),
-        cursor: store.cursor ?? null,
-        lastLedger: store.lastLedger,
-        indexed: store.size,
-      });
-      return;
-    }
-
-    if (url.pathname === "/stats") {
-      sendJson(response, 200, {
-        events: store.size,
-        lastLedger: store.lastLedger,
-        byKind: store.eventCounts,
-      });
-      return;
-    }
-
-    sendJson(response, 404, { error: "Not found" });
+    sendJson(response, result.status, result.body);
   });
 
   httpServer.requestTimeout = 10_000;

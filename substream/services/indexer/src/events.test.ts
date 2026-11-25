@@ -31,6 +31,7 @@ test("decodes a charged event into a JSON-safe record", () => {
     fakeEvent(EventKind.Charged, {
       plan_id: 1n,
       subscriber: "GSUBSCRIBER",
+      merchant: "GMERCHANT",
       amount: 10_000_000n,
       next_charge: 1_700_100_000n,
     }),
@@ -41,6 +42,7 @@ test("decodes a charged event into a JSON-safe record", () => {
   assert.equal(event.subscriptionId, "7");
   assert.equal(event.planId, "1");
   assert.equal(event.subscriber, "GSUBSCRIBER");
+  assert.equal(event.merchant, "GMERCHANT");
   assert.equal(event.amount, "10000000");
   assert.equal(event.nextCharge, "1700100000");
   assert.equal(event.txHash, "abc123");
@@ -52,12 +54,30 @@ test("decodes cancellation reasons and ignores unknown topics", () => {
   const cancelled = parseEvent(
     fakeEvent(EventKind.Cancelled, {
       subscriber: "GSUBSCRIBER",
-      refund: 0n,
+      refund: 4_000n,
       reason: 1n,
     }),
   );
   assert.equal(cancelled?.kind, "cancelled");
   assert.equal(cancelled?.reason, 1);
+  assert.equal(cancelled?.amount, "4000");
 
   assert.equal(parseEvent(fakeEvent("unknown_event", {})), null);
+});
+
+test("decodes plan token and merchant for metric attribution", () => {
+  const plan = parseEvent(
+    fakeEvent(EventKind.PlanCreated, {
+      merchant: "GMERCHANT",
+      token: "CTOKEN",
+      amount: 1_000n,
+      interval: 86_400n,
+      grace_period: 3_600n,
+    }),
+  );
+
+  assert.ok(plan);
+  assert.equal(plan.planId, "7");
+  assert.equal(plan.merchant, "GMERCHANT");
+  assert.equal(plan.token, "CTOKEN");
 });
