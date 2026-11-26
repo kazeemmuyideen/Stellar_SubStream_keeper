@@ -71,38 +71,41 @@ remaining balance.
 
 ## Live testnet deployment
 
-A pre-audit beta is deployed on Stellar testnet:
+A pre-audit beta runs the hardened source WASM on Stellar testnet:
 
 | Network | Contract ID | Explorer |
 | --- | --- | --- |
-| Testnet | `CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN) |
+| Testnet | `CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS` | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS) |
 
-The deployed WASM is older than the current source: the grace-period, TTL, and
-refund hardening described here is source-only until the contract is redeployed.
-See [`deployments/testnet.json`](deployments/testnet.json) for the recorded
-hashes and the outstanding redeploy step.
+The deployed WASM hash is
+`159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7`, matching
+the reproducible source build. The original testnet contract is preserved for
+historical evidence but is not overwritten because its subscription records are
+not storage-compatible with the snapshotted token field. Hashes and transaction
+links are in [`deployments/testnet.json`](deployments/testnet.json).
 
-The deployment used native XLM as the SAC token. Plan #1 is a live demo plan:
-**1 XLM per 30 days with a one-day grace period**. Use the Merchant tab to
-create your own plan, or point a plan at a testnet USDC SAC.
+The deployment uses native XLM as the SAC token. Plan #2 is a live demo plan:
+**1 XLM per 30 days with a one-day grace period**. The dApp's guided demo can
+create its own 10-second plan for a fast end-to-end walkthrough.
 
 The full lifecycle was smoke-tested on this deployment:
 
 | Step | Transaction |
 | --- | --- |
-| Create plan | [`f9590f9c…`](https://stellar.expert/explorer/testnet/tx/f9590f9c53dff403da59b595b270fe2cfaf9bbad578f86e1055a8dc1c43505c9) |
-| Subscribe (2 cycles) | [`8e506f2f…`](https://stellar.expert/explorer/testnet/tx/8e506f2f3aa0a15ed43c74f99eaf31d48a5daccf9764e3d34cb8d67fb10c648b) |
-| Charge | [`508a7386…`](https://stellar.expert/explorer/testnet/tx/508a73860133a224a227594f5c2e6a80035437ed3764acdbf70bdc8ff8c92444) |
-| Cancel + refund | [`2a8ea660…`](https://stellar.expert/explorer/testnet/tx/2a8ea66032a9b377f4ddbd78590ab88216ffe244c8810f30e458c13499105fff) |
+| Create plan | [`d01c2ea0…`](https://stellar.expert/explorer/testnet/tx/d01c2ea0bd3c6a7319eae0c69b8da2e4353b747cc5c4b1774e4c36e05072b693) |
+| Subscribe (2 cycles) | [`058d03aa…`](https://stellar.expert/explorer/testnet/tx/058d03aac5d1dba347ba7f75ee37da81ab697d278199a43b07b511635a884003) |
+| Charge | [`db47b47a…`](https://stellar.expert/explorer/testnet/tx/db47b47a2302d2df4d68d9b13cf66a573f1467396c64a3c1da21e7d4130b17bb) |
+| Cancel + refund | [`bfbbdf84…`](https://stellar.expert/explorer/testnet/tx/bfbbdf84567c537270f198258827bd064df315a494dda960f47201291ba8febb) |
 
 To reproduce the lifecycle yourself against the live contract:
 
 ```bash
-./scripts/demo.sh --interval 10 --cycles 2
+./scripts/demo.sh --contract CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS --interval 10 --cycles 2
 ```
 
 The script creates and pauses its own plan, so it does not leave an active demo
-plan behind. Transaction links are printed as it runs.
+plan behind. Transaction links are printed as it runs. For a public HTTPS
+deployment of the dApp and indexer, follow [`docs/public-demo.md`](docs/public-demo.md).
 
 ## Repository layout
 

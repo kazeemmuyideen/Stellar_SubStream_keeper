@@ -29,8 +29,11 @@ jobs:
       - name: Check Markdown links and anchors
         run: node scripts/check_docs.mjs
 
-      - name: Validate workflow YAML
-        run: npx --yes js-yaml .github/workflows/validate.yml >/dev/null
+      - name: Validate YAML manifests
+        run: |
+          npx --yes js-yaml .github/workflows/validate.yml >/dev/null
+          npx --yes js-yaml substream/render.yaml >/dev/null
+          npx --yes js-yaml substream/docker-compose.yml >/dev/null
 
   substream-contract:
     name: SubStream contract (fmt, clippy, tests, wasm)

@@ -2,10 +2,15 @@
   "network": "testnet",
   "networkPassphrase": "Test SDF Network ; September 2015",
   "rpcUrl": "https://soroban-testnet.stellar.org",
-  "contractId": "CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN",
-  "wasmHash": "c6a7ccd0b98304b2eb4d2ef7739d0fb0b4f28478f74b9cd1e5302d54ac5bb786",
-  "sourceWasmHash": "159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7",
-  "sourceNote": "Live contract still runs wasmHash. sourceWasmHash includes grace-period, TTL, and refund hardening plus a snapshotted token field; redeploy to a fresh contract or migrate existing subscription records before use.",
+  "contractId": "CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS",
+  "wasmHash": "159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7",
+  "deployment": {
+    "ledger": 5936155,
+    "uploadTx": "0f27cd5230a617b43070448ff7f380fb44d5141c62c363e3b0f45a5207d0f1a0",
+    "deployTx": "bace6dbdbfad6396b938cd35091f7ae09c9a20dd64c6311da6ce2824d4127454",
+    "explorer": "https://stellar.expert/explorer/testnet/contract/CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS",
+    "note": "Fresh contract deployed with the hardened WASM. The previous contract was left untouched because its Subscription records are not storage-compatible with the snapshotted token field."
+  },
   "token": {
     "symbol": "XLM (native SAC)",
     "contractId": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
@@ -15,47 +20,47 @@
     {
       "id": 1,
       "amount": "10000000",
-      "interval": 2592000,
-      "gracePeriod": 86400,
-      "active": true,
-      "description": "Demo plan: 1 XLM per 30 days, one-day grace period"
+      "interval": 10,
+      "gracePeriod": 3600,
+      "active": false,
+      "description": "Fast lifecycle demo; paused after the charge and refund verification"
     },
     {
       "id": 2,
       "amount": "10000000",
-      "interval": 60,
-      "gracePeriod": 3600,
-      "active": false,
-      "description": "Fast end-to-end smoke test plan; paused after verification"
-    },
-    {
-      "id": 3,
-      "amount": "10000000",
-      "interval": 10,
-      "gracePeriod": 3600,
-      "active": false,
-      "description": "scripts/demo.sh run; paused after the charge and refund lifecycle"
+      "interval": 2592000,
+      "gracePeriod": 86400,
+      "active": true,
+      "description": "Public demo plan: 1 XLM per 30 days, one-day grace period"
     }
   ],
   "transactions": {
-    "createPlan": "f9590f9c53dff403da59b595b270fe2cfaf9bbad578f86e1055a8dc1c43505c9",
-    "subscribe": "8e506f2f3aa0a15ed43c74f99eaf31d48a5daccf9764e3d34cb8d67fb10c648b",
-    "charge": "508a73860133a224a227594f5c2e6a80035437ed3764acdbf70bdc8ff8c92444",
-    "cancel": "2a8ea66032a9b377f4ddbd78590ab88216ffe244c8810f30e458c13499105fff",
-    "pauseSmokeTestPlan": "1d602fa655292276d5c1a6cb191aca4dcc633f5977a5e885eeb475a2fc523972"
+    "uploadWasm": "0f27cd5230a617b43070448ff7f380fb44d5141c62c363e3b0f45a5207d0f1a0",
+    "deploy": "bace6dbdbfad6396b938cd35091f7ae09c9a20dd64c6311da6ce2824d4127454",
+    "createFastDemoPlan": "d01c2ea0bd3c6a7319eae0c69b8da2e4353b747cc5c4b1774e4c36e05072b693",
+    "subscribe": "058d03aac5d1dba347ba7f75ee37da81ab697d278199a43b07b511635a884003",
+    "charge": "db47b47a2302d2df4d68d9b13cf66a573f1467396c64a3c1da21e7d4130b17bb",
+    "cancel": "bfbbdf84567c537270f198258827bd064df315a494dda960f47201291ba8febb",
+    "pauseFastDemoPlan": "e4a9de3dfc2ea78fe863dd99b031510b7f2d2d16e9587141e8d70b1bdd804faa",
+    "createPublicDemoPlan": "a215518124e6db95086a208bda3ad4f18bf106f00bbfb74cc99fb5cb70597fd4"
   },
   "demoRuns": [
     {
-      "command": "scripts/demo.sh --interval 10 --cycles 2",
-      "planId": 3,
-      "subscriptionId": 2,
+      "command": "scripts/demo.sh --interval 10 --cycles 2 --contract CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS",
+      "planId": 1,
+      "subscriptionId": 1,
       "transactions": {
-        "createPlan": "0f6e405195f8e077a030f97f93bca261e3a2440f5cfa89f01b136d3636aaa743",
-        "subscribe": "a95c2346ebe2c126f6d1ef2b9bf7193136ea5817fa240269d89cfb066221bcc9",
-        "charge": "e8603cdf2eb26ce163e45470af73845c8229da08ac896c52bc25dc4debd990a5",
-        "cancel": "096d1ef1c355cafd921ffed85b52bef2e72673837ae1805947807393d5daefce",
-        "pausePlan": "3f22f7612b345a505febe468791ea303bd1f5716cb7089834c75ff7eca23711b"
+        "createPlan": "d01c2ea0bd3c6a7319eae0c69b8da2e4353b747cc5c4b1774e4c36e05072b693",
+        "subscribe": "058d03aac5d1dba347ba7f75ee37da81ab697d278199a43b07b511635a884003",
+        "charge": "db47b47a2302d2df4d68d9b13cf66a573f1467396c64a3c1da21e7d4130b17bb",
+        "cancel": "bfbbdf84567c537270f198258827bd064df315a494dda960f47201291ba8febb",
+        "pausePlan": "e4a9de3dfc2ea78fe863dd99b031510b7f2d2d16e9587141e8d70b1bdd804faa"
       }
     }
-  ]
+  ],
+  "previousDeployment": {
+    "contractId": "CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN",
+    "wasmHash": "c6a7ccd0b98304b2eb4d2ef7739d0fb0b4f28478f74b9cd1e5302d54ac5bb786",
+    "note": "Original testnet contract retained for historical evidence and not overwritten."
+  }
 }

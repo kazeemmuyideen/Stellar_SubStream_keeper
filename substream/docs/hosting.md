@@ -4,6 +4,10 @@ This guide deploys the dApp, indexer, and keeper without changing the contract.
 It does **not** claim that public instances are already live; fill in the URLs
 in [`scf-application.md`](scf-application.md) only after these steps succeed.
 
+For the fastest reproducible public demo, use the Render Blueprint in
+[`public-demo.md`](public-demo.md) and [`../render.yaml`](../render.yaml). The
+steps below are the host-agnostic version.
+
 ## 1. Build the static dApp
 
 The Vite build inlines `VITE_*` values, so set them at build time:

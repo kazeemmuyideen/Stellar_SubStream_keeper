@@ -29,4 +29,7 @@ export const config = {
   explorerBase: networkPassphrase.includes("Public Global")
     ? "https://stellar.expert/explorer/public/tx"
     : "https://stellar.expert/explorer/testnet/tx",
+  explorerContractBase: networkPassphrase.includes("Public Global")
+    ? "https://stellar.expert/explorer/public/contract"
+    : "https://stellar.expert/explorer/testnet/contract",
 };

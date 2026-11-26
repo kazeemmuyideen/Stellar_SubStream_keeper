@@ -19,18 +19,17 @@ Show the repository README and the contract on stellar.expert.
 ## 0:50–1:50 — Subscriber flow
 
 1. Open the dApp, connect Freighter on **Testnet**.
-2. Show the funded testnet balance.
-3. Open **Market**, pick the demo plan (1 XLM / 30 days).
-4. Subscribe with 2 cycles prepaid; approve in Freighter.
-5. Show the subscription card with escrow balance and next charge time.
+2. Show the funded testnet balance and the new **Guided demo** tab.
+3. Let the guide create a 10-second plan, then subscribe with 2 cycles prepaid.
+4. Approve in Freighter and show the step marker advance.
+5. Open **Subscriptions** and show the escrow balance, status filters, search,
+   and next charge time.
 
 ## 1:50–2:40 — Permissionless charge
 
-1. Open the **Keeper** tab.
-2. Explain that anyone can charge; there is no admin key.
-3. For a fast demo, create a plan with a short interval first, or run
-   `./scripts/demo.sh --interval 10 --cycles 2` in a terminal and show the
-   `charged` event and the transaction on stellar.expert.
+1. Return to **Guided demo** and wait for the countdown to reach zero.
+2. Explain that anyone can charge; there is no admin key, then click **Charge now**.
+3. Show the `charged` event link and the transaction on stellar.expert.
 4. Show the subscription's `next_charge` advancing.
 
 ## 2:40–3:15 — Refund guarantee
@@ -41,8 +40,8 @@ Show the repository README and the contract on stellar.expert.
 
 ## 3:15–3:40 — Close
 
-> "The contract, SDK, dApp, keeper, and deployment tooling are MIT licensed and
-> open source. The next milestone is an indexer, two pilot merchants, and an
+> "The contract, SDK, dApp, indexer, keeper, and deployment tooling are MIT
+> licensed and open source. The next milestone is two pilot merchants and an
 > audit before mainnet."
 
 Show the GitHub URL and the live demo URL.

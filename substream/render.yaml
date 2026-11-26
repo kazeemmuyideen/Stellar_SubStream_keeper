@@ -1,0 +1,64 @@
+services:
+  - type: web
+    name: substream-indexer
+    env: node
+    plan: starter
+    region: oregon
+    rootDir: substream
+    buildCommand: npm ci
+    startCommand: npm run start -w @substream/indexer
+    healthCheckPath: /health
+    envVars:
+      - key: CONTRACT_ID
+        value: CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS
+      - key: RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: RPC_TIMEOUT_MS
+        value: "15000"
+      - key: PORT
+        value: "8787"
+      - key: POLL_INTERVAL_MS
+        value: "15000"
+      - key: STATE_FILE
+        value: /app/data/events.json
+      - key: START_LEDGER
+        value: "5936155"
+      - key: LOOKBACK_LEDGERS
+        value: "10000"
+      - key: MAX_EVENTS
+        value: "5000"
+      - key: PAGE_SIZE
+        value: "200"
+      - key: MAX_PAGES_PER_TICK
+        value: "10"
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: substream-indexer-data
+      mountPath: /app/data
+      sizeGB: 1
+
+  - type: web
+    name: substream-dapp
+    env: static
+    plan: free
+    region: oregon
+    rootDir: substream
+    buildCommand: npm ci && npm run build -w @substream/web
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: VITE_CONTRACT_ID
+        value: CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS
+      - key: VITE_RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: VITE_NETWORK_PASSPHRASE
+        value: "Test SDF Network ; September 2015"
+      - key: VITE_TOKEN_ADDRESS
+        value: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+      - key: VITE_MAX_FEE
+        value: "20000000"
+      - key: VITE_INDEXER_URL
+        fromService:
+          type: web
+          name: substream-indexer
+          property: url

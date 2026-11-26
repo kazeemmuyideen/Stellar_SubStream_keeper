@@ -14,7 +14,7 @@
 | Requested amount | **$60,000 in XLM** |
 | Milestones | MVP ($12K), Testnet ($18K), Mainnet ($24K), plus T0 ($6K) |
 | Repository | `substream/` in this repository (public, MIT) |
-| Stage | Working prototype: contract, 20 Rust + 42 TypeScript tests, SDK, dApp, keeper, indexer, public metrics |
+| Stage | Working prototype: contract, 20 Rust + 45 TypeScript tests, SDK, dApp with guided demo and subscription manager, keeper, indexer, public metrics |
 | Team | _[name(s), roles, GitHub, relevant background]_ |
 | Contact | _[email / Telegram / Discord]_ |
 
@@ -70,15 +70,18 @@ This repository already contains the prototype:
   invariants.
 - TypeScript SDK with typed reads/writes, signer adapters, bounded
   due-subscription discovery, and transaction verification.
-- React dApp with subscriber, merchant, activity history, and manual keeper
-  views.
+- React dApp with a six-step guided lifecycle demo, subscription manager,
+  merchant analytics, activity history, and manual keeper views.
 - Background keeper with dry-run support, loopback metrics, bounded retry
   backoff, and Docker build instructions.
 - Bounded event indexer with an HTTP API, OpenAPI schema, and cumulative public
   metrics.
 - One-command testnet deployment script.
-- Live testnet deployment with a full create → subscribe → charge → cancel
-  lifecycle exercised on chain (transaction links in the README).
+- Fresh hardened testnet deployment with a full create → subscribe → charge →
+  cancel lifecycle exercised on chain (transaction links in
+  [`../deployments/testnet.json`](../deployments/testnet.json)).
+- Committed public hosting Blueprint for the dApp and indexer, with a guided
+  setup path in [`public-demo.md`](public-demo.md).
 
 The existing prototype is **self-funded prior work** and is not part of the
 requested budget. Grant funds will pay for hardening, testnet operations,
@@ -231,16 +234,17 @@ The core protocol remains free and open source.
 ## Links
 
 - Repository: [`kazeemmuyideen/Stellar_SubStream_keeper`](https://github.com/kazeemmuyideen/Stellar_SubStream_keeper)
-- Demo: _[testnet dApp URL — see `hosting.md`]_
+- Demo: _[testnet dApp URL — deploy with `public-demo.md`]_
 - Demo video: _[URL]_
 - Contract (testnet):
-  `CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN`
-  ([stellar.expert](https://stellar.expert/explorer/testnet/contract/CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN))
+  `CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS`
+  ([stellar.expert](https://stellar.expert/explorer/testnet/contract/CBLX5BM4OUDH47QBBAJLCRF5YSBTEWBVDQISJL2LQQGA3CPWKMQOYVMS))
 - Architecture: [`architecture.md`](architecture.md)
 - Contract API: [`contract-api.md`](contract-api.md)
 - Threat model: [`threat-model.md`](threat-model.md)
 - Indexer API: [`indexer-openapi.json`](indexer-openapi.json)
 - Hosting guide: [`hosting.md`](hosting.md)
+- Public demo deployment: [`public-demo.md`](public-demo.md)
 - Release process: [`release-process.md`](release-process.md)
 - Demo script: [`demo-video-script.md`](demo-video-script.md)
 - Submission checklist: [`submission-checklist.md`](submission-checklist.md)

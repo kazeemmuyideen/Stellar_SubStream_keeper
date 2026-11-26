@@ -16,6 +16,13 @@ import {
 } from "@substream/sdk";
 import { config } from "./config";
 import {
+  demoStage,
+  filterSubscriptions,
+  isDue,
+  type DemoStage,
+  type SubscriptionFilter,
+} from "./dashboard";
+import {
   isMetricsResponse,
   MAX_METRICS_RESPONSE_CHARS,
 } from "./metrics";
@@ -29,7 +36,13 @@ import {
   shortAddress,
 } from "./format";
 
-type Tab = "market" | "subscriptions" | "activity" | "merchant" | "keeper";
+type Tab =
+  | "guide"
+  | "market"
+  | "subscriptions"
+  | "activity"
+  | "merchant"
+  | "keeper";
 
 interface Notice {
   kind: "ok" | "err" | "info";
@@ -113,9 +126,17 @@ export default function App() {
     useState<MetricsResponse | null>(null);
   const [networkMetrics, setNetworkMetrics] =
     useState<MetricsResponse | null>(null);
-  const [tab, setTab] = useState<Tab>("market");
+  const [tab, setTab] = useState<Tab>("guide");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [clock, setClock] = useState(nowSeconds());
+  const [subscriptionFilter, setSubscriptionFilter] =
+    useState<SubscriptionFilter>("all");
+  const [subscriptionQuery, setSubscriptionQuery] = useState("");
+  const [demoPlanId, setDemoPlanId] = useState<bigint | null>(null);
+  const [demoSubscriptionId, setDemoSubscriptionId] = useState<bigint | null>(
+    null,
+  );
 
   const [token, setToken] = useState(config.defaultToken);
   const [amount, setAmount] = useState("5");
@@ -142,6 +163,7 @@ export default function App() {
         : null,
     [address],
   );
+  const connected = Boolean(address && client);
 
   const refresh = useCallback(
     async (activeClient = client, source = address) => {
@@ -185,6 +207,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setClock(nowSeconds()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     if (!address) setMerchantMetrics(null);
     void Promise.all([
@@ -205,14 +232,10 @@ export default function App() {
     [plans, address],
   );
 
-  const dueSubscriptions = useMemo(() => {
-    const now = nowSeconds();
-    return allSubscriptions.filter(
-      (subscription) =>
-        subscription.status !== SubscriptionStatus.Cancelled &&
-        subscription.nextCharge <= now,
-    );
-  }, [allSubscriptions]);
+  const dueSubscriptions = useMemo(
+    () => allSubscriptions.filter((subscription) => isDue(subscription, clock)),
+    [allSubscriptions, clock],
+  );
 
   const totalEscrow = useMemo(
     () =>
@@ -224,6 +247,62 @@ export default function App() {
         0n,
       ),
     [allSubscriptions],
+  );
+
+  const demoPlan = useMemo(
+    () =>
+      plans.find((plan) => plan.id === demoPlanId) ??
+      plans.find((plan) => plan.active) ??
+      plans[0],
+    [plans, demoPlanId],
+  );
+
+  const demoSubscription = useMemo(
+    () =>
+      mySubscriptions.find(
+        (subscription) => subscription.id === demoSubscriptionId,
+      ) ?? mySubscriptions[0],
+    [mySubscriptions, demoSubscriptionId],
+  );
+
+  const currentStage = useMemo<DemoStage>(
+    () =>
+      demoStage({
+        connected,
+        hasPlan: plans.length > 0,
+        hasSubscription: mySubscriptions.length > 0,
+        hasDueSubscription: Boolean(
+          demoSubscription && isDue(demoSubscription, clock),
+        ),
+        hasCancelledSubscription: Boolean(
+          demoSubscription?.status === SubscriptionStatus.Cancelled,
+        ),
+      }),
+    [connected, plans.length, mySubscriptions.length, demoSubscription, clock],
+  );
+
+  const visibleSubscriptions = useMemo(
+    () =>
+      filterSubscriptions(mySubscriptions, subscriptionFilter, subscriptionQuery),
+    [mySubscriptions, subscriptionFilter, subscriptionQuery],
+  );
+
+  const merchantSubscriptions = useMemo(
+    () =>
+      allSubscriptions.filter((subscription) =>
+        merchantPlans.some((plan) => plan.id === subscription.planId),
+      ),
+    [allSubscriptions, merchantPlans],
+  );
+
+  const latestDemoTx = useMemo(
+    () =>
+      activityEvents.find(
+        (event) =>
+          demoSubscription &&
+          event.subscriptionId === demoSubscription.id.toString(),
+      )?.txHash,
+    [activityEvents, demoSubscription],
   );
 
   async function handleConnect() {
@@ -247,7 +326,7 @@ export default function App() {
       });
       setAddress(connected);
       setClient(nextClient);
-      setTab("market");
+      setTab("guide");
     } catch (error) {
       setNotice({ kind: "err", text: errorMessage(error) });
     } finally {
@@ -312,9 +391,39 @@ export default function App() {
     });
   }
 
-  async function handleSubscribe(plan: Plan) {
+  async function handleCreateDemoPlan() {
     if (!client || !signer) return;
-    const count = Number(cycles[`plan-${plan.id}`] ?? "3");
+
+    await runAction("demo-plan", async () => {
+      const demoToken = token.trim() || config.defaultToken;
+      if (!demoToken) {
+        throw new Error("Set VITE_TOKEN_ADDRESS to enable the guided demo.");
+      }
+      const { hash, planId } = await client.createPlan({
+        merchant: address,
+        token: demoToken,
+        amount: parseAmount("1", parsedDecimals),
+        interval: 10n,
+        gracePeriod: 3600n,
+        signer,
+      });
+      setToken(demoToken);
+      setDemoPlanId(planId);
+      setNotice({
+        kind: "ok",
+        text: `Demo plan #${planId} is live: 1 token every 10 seconds.`,
+        hash,
+      });
+      await refresh();
+    });
+  }
+
+  async function handleSubscribe(
+    plan: Plan,
+    options: { keepTab?: boolean; demo?: boolean } = {},
+  ) {
+    if (!client || !signer) return;
+    const count = options.demo ? 2 : Number(cycles[`plan-${plan.id}`] ?? "3");
 
     await runAction(`subscribe-${plan.id}`, async () => {
       if (!Number.isInteger(count) || count < 1) {
@@ -331,8 +440,9 @@ export default function App() {
         text: `Subscribed to plan #${plan.id}. Subscription #${subscriptionId} is active.`,
         hash,
       });
+      if (options.demo) setDemoSubscriptionId(subscriptionId);
       await refresh();
-      setTab("subscriptions");
+      if (!options.keepTab) setTab("subscriptions");
     });
   }
 
@@ -425,8 +535,6 @@ export default function App() {
     });
   }
 
-  const connected = Boolean(address && client);
-
   return (
     <div className="app-shell">
       <div className="grid-glow" aria-hidden="true" />
@@ -480,8 +588,11 @@ export default function App() {
               balance goes straight back to the subscriber.
             </p>
             <div className="hero-actions">
+              <button className="primary" onClick={() => setTab("guide")}>
+                Start guided demo
+              </button>
               <button
-                className="primary"
+                className="ghost"
                 onClick={() => setTab("market")}
                 disabled={!connected}
               >
@@ -538,7 +649,8 @@ export default function App() {
               <p>
                 SubStream reads plans and subscriptions from Soroban RPC. Your
                 Freighter wallet signs plan creation, subscriptions, top-ups,
-                charges, and cancellations.
+                charges, and cancellations. After connecting, the guided demo
+                walks through the whole lifecycle in six steps.
               </p>
             </div>
             <button
@@ -552,6 +664,9 @@ export default function App() {
         ) : (
           <>
             <nav className="tabs" aria-label="Dashboard sections">
+              <TabButton active={tab === "guide"} onClick={() => setTab("guide")}>
+                Guided demo
+              </TabButton>
               <TabButton active={tab === "market"} onClick={() => setTab("market")}>
                 Market
               </TabButton>
@@ -559,7 +674,7 @@ export default function App() {
                 active={tab === "subscriptions"}
                 onClick={() => setTab("subscriptions")}
               >
-                My subscriptions
+                Subscriptions
               </TabButton>
               <TabButton active={tab === "activity"} onClick={() => setTab("activity")}>
                 Activity
@@ -590,6 +705,38 @@ export default function App() {
               </button>
             </nav>
 
+            {tab === "guide" && (
+              <section className="section">
+                <SectionHeading
+                  title="Guided demo"
+                  description="Your wallet acts as both merchant and subscriber, so one account can complete the full lifecycle without a second signer."
+                />
+                <GuidedDemo
+                  stage={currentStage}
+                  plan={demoPlan}
+                  subscription={demoSubscription}
+                  now={clock}
+                  decimals={displayDecimals}
+                  explorerBase={config.explorerBase}
+                  explorerTx={latestDemoTx}
+                  busy={Boolean(busy)}
+                  onConnect={handleConnect}
+                  onCreatePlan={handleCreateDemoPlan}
+                  onSubscribe={() =>
+                    demoPlan && handleSubscribe(demoPlan, { keepTab: true, demo: true })
+                  }
+                  onCharge={() =>
+                    demoSubscription && handleCharge(demoSubscription)
+                  }
+                  onCancel={() =>
+                    demoSubscription && handleCancel(demoSubscription)
+                  }
+                  onManage={() => setTab("subscriptions")}
+                  onBrowse={() => setTab("market")}
+                />
+              </section>
+            )}
+
             {tab === "market" && (
               <section className="section">
                 <SectionHeading
@@ -599,7 +746,7 @@ export default function App() {
                 {plans.length === 0 ? (
                   <EmptyState
                     title="No plans yet"
-                    body="Create the first billing plan from the Merchant tab."
+                    body="Use the guided demo for a 10-second plan, or create a custom plan in the Merchant tab."
                   />
                 ) : (
                   <div className="card-grid">
@@ -627,22 +774,107 @@ export default function App() {
             {tab === "subscriptions" && (
               <section className="section">
                 <SectionHeading
-                  title="My subscriptions"
-                  description="Your prepaid escrow, next charge date, and cancellation controls."
+                  title="Subscription manager"
+                  description="Track prepaid escrow, next charge dates, and cancellation controls, plus subscriptions to plans you publish."
                 />
-                {mySubscriptions.length === 0 ? (
+                <div className="stats manager-stats">
+                  <Stat
+                    label="Active"
+                    value={mySubscriptions
+                      .filter(
+                        (subscription) =>
+                          subscription.status === SubscriptionStatus.Active,
+                      )
+                      .length.toString()}
+                  />
+                  <Stat
+                    label="Past due"
+                    value={mySubscriptions
+                      .filter(
+                        (subscription) =>
+                          subscription.status === SubscriptionStatus.PastDue,
+                      )
+                      .length.toString()}
+                  />
+                  <Stat
+                    label="My escrow"
+                    value={formatAmount(
+                      mySubscriptions.reduce(
+                        (sum, subscription) =>
+                          subscription.status === SubscriptionStatus.Cancelled
+                            ? sum
+                            : sum + subscription.balance,
+                        0n,
+                      ),
+                      displayDecimals,
+                    )}
+                  />
+                  <Stat
+                    label="Plan subscribers"
+                    value={merchantSubscriptions.length.toString()}
+                    hint="subscriptions to my plans"
+                  />
+                </div>
+
+                <div className="manager-toolbar">
+                  <div className="segmented" aria-label="Filter subscriptions">
+                    {(
+                      [
+                        ["all", "All"],
+                        ["active", "Active"],
+                        ["past-due", "Past due"],
+                        ["cancelled", "Cancelled"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={
+                          subscriptionFilter === value ? "segment-active" : ""
+                        }
+                        onClick={() => setSubscriptionFilter(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="search-input"
+                    value={subscriptionQuery}
+                    onChange={(event) => setSubscriptionQuery(event.target.value)}
+                    placeholder="Search id, plan, or address"
+                    aria-label="Search subscriptions"
+                  />
+                </div>
+
+                {visibleSubscriptions.length === 0 ? (
                   <EmptyState
-                    title="No subscriptions"
-                    body="Pick a plan in the Market tab to start one."
+                    title={
+                      mySubscriptions.length === 0
+                        ? "No subscriptions"
+                        : "No matching subscriptions"
+                    }
+                    body={
+                      mySubscriptions.length === 0
+                        ? "Pick a plan in the Market tab or use the guided demo to start one."
+                        : "Change the filter or search text to see more subscriptions."
+                    }
                   />
                 ) : (
                   <div className="stack">
-                    {mySubscriptions.map((subscription) => (
+                    {visibleSubscriptions.map((subscription) => (
                       <SubscriptionCard
                         key={subscription.id.toString()}
                         subscription={subscription}
+                        viewer={address}
+                        now={clock}
                         decimals={displayDecimals}
                         cycles={cycles[`sub-${subscription.id}`] ?? "1"}
+                        explorerBase={config.explorerBase}
+                        explorerTx={activityEvents.find(
+                          (event) =>
+                            event.subscriptionId === subscription.id.toString(),
+                        )?.txHash}
                         onCyclesChange={(value) =>
                           setCycles((current) => ({
                             ...current,
@@ -657,6 +889,35 @@ export default function App() {
                     ))}
                   </div>
                 )}
+
+                <div className="sub-section">
+                  <div className="sub-section-head">
+                    <h3>Subscriptions to my plans</h3>
+                    <span className="muted">
+                      {merchantSubscriptions.length} on-chain subscription
+                      {merchantSubscriptions.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {merchantSubscriptions.length === 0 ? (
+                    <EmptyState
+                      title="No subscribers yet"
+                      body="Share one of your merchant plans to see subscriber activity here."
+                    />
+                  ) : (
+                    <div className="stack">
+                      {merchantSubscriptions.map((subscription) => (
+                        <MerchantSubscriptionRow
+                          key={subscription.id.toString()}
+                          subscription={subscription}
+                          viewer={address}
+                          now={clock}
+                          decimals={displayDecimals}
+                          explorerContractBase={config.explorerContractBase}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
             )}
 
@@ -1028,6 +1289,184 @@ function MerchantAnalytics({
   );
 }
 
+const GUIDE_STEPS: ReadonlyArray<{
+  stage: DemoStage;
+  title: string;
+  description: string;
+}> = [
+  {
+    stage: "connect",
+    title: "Connect your wallet",
+    description: "Freighter signs each step and reads state from Soroban RPC.",
+  },
+  {
+    stage: "create-plan",
+    title: "Create a demo plan",
+    description: "Publish a 1-token plan that charges every 10 seconds.",
+  },
+  {
+    stage: "subscribe",
+    title: "Subscribe and prepay",
+    description: "Escrow two cycles in one signature; terms are snapshotted.",
+  },
+  {
+    stage: "wait",
+    title: "Wait for the due date",
+    description: "The dashboard tracks the live countdown from contract state.",
+  },
+  {
+    stage: "charge",
+    title: "Settle a charge",
+    description: "Anyone can trigger the payment once the cycle is due.",
+  },
+  {
+    stage: "complete",
+    title: "Cancel and refund",
+    description: "Close the subscription and watch unused escrow return.",
+  },
+];
+
+function GuidedDemo({
+  stage,
+  plan,
+  subscription,
+  now,
+  decimals,
+  explorerBase,
+  explorerTx,
+  busy,
+  onConnect,
+  onCreatePlan,
+  onSubscribe,
+  onCharge,
+  onCancel,
+  onManage,
+  onBrowse,
+}: {
+  stage: DemoStage;
+  plan?: Plan;
+  subscription?: Subscription;
+  now: bigint;
+  decimals: number;
+  explorerBase: string;
+  explorerTx?: string;
+  busy: boolean;
+  onConnect: () => void;
+  onCreatePlan: () => void;
+  onSubscribe: () => void;
+  onCharge: () => void;
+  onCancel: () => void;
+  onManage: () => void;
+  onBrowse: () => void;
+}) {
+  const currentIndex = Math.max(
+    0,
+    GUIDE_STEPS.findIndex((step) => step.stage === stage),
+  );
+  const secondsUntilDue =
+    subscription && subscription.nextCharge > now
+      ? Number(subscription.nextCharge - now)
+      : 0;
+  const actions: Record<DemoStage, { label: string; run: () => void; off?: boolean }> = {
+    connect: { label: "Connect Freighter", run: onConnect },
+    "create-plan": { label: "Create demo plan", run: onCreatePlan },
+    subscribe: { label: "Subscribe now", run: onSubscribe, off: !plan },
+    wait: { label: "Open subscription manager", run: onManage },
+    charge: {
+      label: "Charge now",
+      run: onCharge,
+      off: !subscription || !isDue(subscription, now),
+    },
+    complete: { label: "Browse open plans", run: onBrowse },
+  };
+
+  return (
+    <div className="guide">
+      <div className="card guide-summary">
+        <div className="card-top">
+          <span className="eyebrow">Current step {currentIndex + 1} of 6</span>
+          <span className="pill pill-on">
+            {GUIDE_STEPS[currentIndex]?.title ?? "Lifecycle complete"}
+          </span>
+        </div>
+        <h3>{GUIDE_STEPS[currentIndex]?.description ?? "All steps finished."}</h3>
+        <p className="muted">
+          {stage === "connect" &&
+            "Connect Freighter to begin. Testnet funds are required for the 1-token demo plan."}
+          {stage === "create-plan" &&
+            "The plan uses the token configured for this dApp and stays active for public discovery."}
+          {stage === "subscribe" &&
+            (plan
+              ? `Plan #${plan.id.toString()} is ready: ${formatAmount(plan.amount, decimals)} every ${formatDuration(plan.interval)}.`
+              : "Create a demo plan first.")}
+          {stage === "wait" &&
+            subscription &&
+            `Subscription #${subscription.id.toString()} is funded. Next charge in ~${formatDuration(BigInt(secondsUntilDue))}.`}
+          {stage === "charge" &&
+            subscription &&
+            `Subscription #${subscription.id.toString()} is due. ${formatAmount(subscription.balance, decimals)} remains in escrow.`}
+          {stage === "complete" &&
+            "The demo is complete. The cancellation refunded the unused escrow to your wallet."}
+        </p>
+        {explorerTx && (
+          <a
+            className="activity-tx"
+            href={`${explorerBase}/${explorerTx}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View the latest demo transaction ↗
+          </a>
+        )}
+      </div>
+
+      <ol className="guide-steps">
+        {GUIDE_STEPS.map((step, index) => {
+          const state =
+            index < currentIndex
+              ? "done"
+              : index === currentIndex && stage !== "complete"
+                ? "current"
+                : "upcoming";
+          const action = actions[step.stage];
+          return (
+            <li className={`guide-step guide-${state}`} key={step.stage}>
+              <span className="guide-number" aria-hidden="true">
+                {state === "done" ? "✓" : index + 1}
+              </span>
+              <div className="guide-step-copy">
+                <strong>{step.title}</strong>
+                <p>{step.description}</p>
+                {state === "current" && (
+                  <button
+                    className="primary"
+                    onClick={action.run}
+                    disabled={busy || Boolean(action.off)}
+                  >
+                    {busy ? "Working…" : action.label}
+                  </button>
+                )}
+              </div>
+              <span className={`pill ${state === "done" ? "pill-on" : "pill-off"}`}>
+                {state === "done"
+                  ? "Done"
+                  : state === "current"
+                    ? "Now"
+                    : "Next"}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="fineprint">
+        The guided demo creates real testnet transactions. Charges are
+        permissionless, and cancelling always refunds the unused escrow.
+      </p>
+    </div>
+  );
+}
+
 function TabButton({
   active,
   onClick,
@@ -1367,8 +1806,12 @@ function PlanCard({
 
 function SubscriptionCard({
   subscription,
+  viewer,
+  now,
   decimals,
   cycles,
+  explorerBase,
+  explorerTx,
   onCyclesChange,
   onTopUp,
   onCharge,
@@ -1376,8 +1819,12 @@ function SubscriptionCard({
   busy,
 }: {
   subscription: Subscription;
+  viewer: string;
+  now: bigint;
   decimals: number;
   cycles: string;
+  explorerBase: string;
+  explorerTx?: string;
   onCyclesChange: (value: string) => void;
   onTopUp: () => void;
   onCharge: () => void;
@@ -1386,8 +1833,8 @@ function SubscriptionCard({
 }) {
   const cancelled = subscription.status === SubscriptionStatus.Cancelled;
   const pastDue = subscription.status === SubscriptionStatus.PastDue;
-  const due =
-    !cancelled && subscription.nextCharge <= nowSeconds();
+  const due = isDue(subscription, now);
+  const isMine = subscription.subscriber === viewer;
 
   return (
     <article className={`card subscription-card ${cancelled ? "is-muted" : ""}`}>
@@ -1396,13 +1843,16 @@ function SubscriptionCard({
           Subscription #{subscription.id.toString()} · plan #
           {subscription.planId.toString()}
         </span>
-        <span
-          className={`pill ${
-            cancelled ? "pill-off" : pastDue ? "pill-warn" : "pill-on"
-          }`}
-        >
-          {statusLabel(subscription.status)}
-        </span>
+        <div className="pill-group">
+          {due && <span className="pill pill-warn">Due now</span>}
+          <span
+            className={`pill ${
+              cancelled ? "pill-off" : pastDue ? "pill-warn" : "pill-on"
+            }`}
+          >
+            {statusLabel(subscription.status)}
+          </span>
+        </div>
       </div>
 
       <div className="sub-grid">
@@ -1423,6 +1873,22 @@ function SubscriptionCard({
           <strong>{subscription.cyclesPaid.toString()}</strong>
         </div>
       </div>
+
+      <p className="sub-meta">
+        Subscriber{" "}
+        <span title={subscription.subscriber}>
+          {isMine ? "you" : shortAddress(subscription.subscriber)}
+        </span>
+        {explorerTx && (
+          <a
+            href={`${explorerBase}/${explorerTx}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View latest transaction ↗
+          </a>
+        )}
+      </p>
 
       {!cancelled && (
         <div className="actions">
@@ -1454,6 +1920,62 @@ function SubscriptionCard({
           </div>
         </div>
       )}
+    </article>
+  );
+}
+
+function MerchantSubscriptionRow({
+  subscription,
+  viewer,
+  now,
+  decimals,
+  explorerContractBase,
+}: {
+  subscription: Subscription;
+  viewer: string;
+  now: bigint;
+  decimals: number;
+  explorerContractBase: string;
+}) {
+  return (
+    <article className="card merchant-sub-row">
+      <div>
+        <span className="eyebrow">
+          Subscription #{subscription.id.toString()} · plan #
+          {subscription.planId.toString()}
+        </span>
+        <h3>
+          {formatAmount(subscription.amount, decimals)} per cycle ·{" "}
+          <span title={subscription.subscriber}>
+            {subscription.subscriber === viewer
+              ? "you"
+              : shortAddress(subscription.subscriber)}
+          </span>
+        </h3>
+      </div>
+      <dl className="facts">
+        <div>
+          <dt>Escrow</dt>
+          <dd>{formatAmount(subscription.balance, decimals)}</dd>
+        </div>
+        <div>
+          <dt>Next charge</dt>
+          <dd>{formatDate(subscription.nextCharge)}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{statusLabel(subscription.status)}</dd>
+        </div>
+      </dl>
+      <a
+        className="activity-tx"
+        href={`${explorerContractBase}/${subscription.token}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Token on explorer ↗
+      </a>
+      {isDue(subscription, now) && <span className="pill pill-warn">Due</span>}
     </article>
   );
 }

@@ -10,20 +10,22 @@ verified without private accounts is already done.
 - [x] 20 contract tests passing (including a seeded property-style invariant
       suite); `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
       clean.
-- [x] Reproducible WASM build documented; current source hash
+- [x] Reproducible WASM build documented; current source and deployed hash
       `159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7`.
-      The live testnet deployment still runs the previous WASM until it is
-      redeployed.
-- [x] TypeScript SDK, React dApp, keeper, and indexer; 42 tests passing, plus
+- [x] TypeScript SDK, React dApp, keeper, and indexer; 45 tests passing, plus
       typecheck, audit, production build, and an npm-ready SDK tarball.
 - [x] Public `/metrics` endpoint and merchant analytics: revenue by token,
       charge success rate, plan breakdowns, failures, and refunds.
 - [x] Indexer OpenAPI schema, keeper metrics endpoint with retry/backoff,
       Docker build instructions, and a release bundle with checksums.
-- [x] Threat model, hosting guide, and release process documentation.
+- [x] Threat model, hosting guide, public demo deployment guide, and release
+      process documentation.
+- [x] Public hosting Blueprint for the dApp and indexer (`render.yaml`), with
+      production env templates for both services.
+- [x] Guided six-step lifecycle demo and subscription manager in the dApp.
 - [x] Root CI workflow covering skills/manifests/secrets, contract
       fmt/clippy/tests/WASM, and TypeScript audit/typecheck/tests/build.
-- [x] Live testnet deployment with recorded transaction links in
+- [x] Fresh hardened testnet deployment with recorded transaction links in
       [`../deployments/testnet.json`](../deployments/testnet.json).
 - [x] One-command deploy (`scripts/deploy.sh`) and keeper setup
       (`scripts/configure-keeper.sh`).
@@ -39,13 +41,12 @@ verified without private accounts is already done.
 - [ ] Contact email / Telegram / Discord.
 - [ ] Confirm the canonical public repository URL. Application docs currently
       use the `origin` remote, `kazeemmuyideen/Stellar_SubStream_keeper`.
-- [ ] Public demo URL for the dApp (for example Vercel, Netlify, or Cloudflare
-      Pages). Set the `VITE_*` variables from `apps/web/.env.example`.
-- [ ] Redeploy the contract with the lifecycle and hardening fixes, then update
-      `wasmHash` and the transaction links in `deployments/testnet.json` and
-      re-run `scripts/demo.sh` for fresh evidence. Use a fresh contract or plan
-      a migration: the hardened `Subscription` struct adds a snapshotted token
-      field and is not storage-compatible with the live deployment.
+- [ ] Deploy [`../render.yaml`](../render.yaml) (or an equivalent HTTPS host)
+      and paste the dApp/indexer URLs into `scf-application.md`. See
+      [`public-demo.md`](public-demo.md).
+- [ ] The fresh hardened contract and lifecycle evidence are already recorded in
+      `deployments/testnet.json`. No further redeploy is required; the old
+      contract remains untouched for historical evidence.
 - [ ] Demo video URL. Suggested flow is in
       [`demo-video-script.md`](demo-video-script.md).
 - [ ] Confirm the $60,000 Open Track budget and tranche split, or adjust the
