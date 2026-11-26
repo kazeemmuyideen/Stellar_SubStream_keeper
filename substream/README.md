@@ -116,6 +116,7 @@ deployment of the dApp and indexer, follow [`docs/public-demo.md`](docs/public-d
 | `apps/web` | React + Vite dApp for subscribers, merchants, and manual keepers |
 | `services/keeper` | Background service that settles due subscriptions |
 | `services/indexer` | Read-only event indexer, HTTP activity API, and metrics endpoint |
+| `monitoring/` | Local Prometheus/Grafana stack and keeper alerts |
 | `deployments/` | Recorded testnet deployment, demo plan, and transaction links |
 | `scripts/deploy.sh` | Builds and deploys with the Stellar CLI |
 | `scripts/configure-keeper.sh` | Writes the keeper `.env` from a local identity |
@@ -316,8 +317,11 @@ SubStream is built for the SCF 7.0 **Open Track**:
 The full application draft, milestones, and budget are in
 [`docs/scf-application.md`](docs/scf-application.md). Deployment and release
 evidence is covered by [`docs/hosting.md`](docs/hosting.md),
+[`docs/public-demo.md`](docs/public-demo.md),
 [`docs/release-process.md`](docs/release-process.md), and
-[`docs/threat-model.md`](docs/threat-model.md).
+[`docs/threat-model.md`](docs/threat-model.md). Operator and test evidence is in
+[`docs/keeper-operations.md`](docs/keeper-operations.md) and
+[`docs/e2e-testing.md`](docs/e2e-testing.md).
 
 ## Roadmap
 

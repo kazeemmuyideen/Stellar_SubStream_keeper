@@ -1,0 +1,42 @@
+groups:
+  - name: substream-keeper
+    rules:
+      - alert: KeeperScrapeDown
+        expr: up{job="substream-keeper"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: substream-keeper
+        annotations:
+          summary: SubStream keeper metrics target is down
+          description: Check the keeper container and its metrics listener.
+
+      - alert: KeeperTicksFailing
+        expr: keeper_consecutive_failures >= 3
+        for: 2m
+        labels:
+          severity: warning
+          service: substream-keeper
+        annotations:
+          summary: SubStream keeper has failed {{ $value }} consecutive ticks
+          description: Check RPC connectivity and the keeper logs.
+
+      - alert: KeeperNoSuccessfulTick
+        expr: (time() - keeper_last_success_time_seconds > 900) and keeper_ticks_total > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: substream-keeper
+        annotations:
+          summary: SubStream keeper has not completed a tick in 15 minutes
+          description: Charging is permissionless, but scheduled settlement is stalled.
+
+      - alert: KeeperChargeFailures
+        expr: increase(keeper_charge_failures_total[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: substream-keeper
+        annotations:
+          summary: SubStream keeper charge failures are elevated
+          description: More than five charge attempts threw in the last 15 minutes.

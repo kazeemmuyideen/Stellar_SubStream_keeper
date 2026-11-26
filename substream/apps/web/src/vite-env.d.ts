@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_TOKEN_ADDRESS?: string;
   readonly VITE_INDEXER_URL?: string;
   readonly VITE_MAX_FEE?: string;
+  readonly VITE_E2E_FIXTURES?: string;
 }
 
 interface ImportMeta {

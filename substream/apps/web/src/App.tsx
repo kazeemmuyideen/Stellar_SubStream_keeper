@@ -8,12 +8,18 @@ import {
   SubStreamClient,
   SubscriptionStatus,
   type IndexedEvent,
-  type MerchantMetrics,
   type MetricsResponse,
   type Plan,
   type Subscription,
   type TokenAmount,
 } from "@substream/sdk";
+import {
+  downloadCsv,
+  formatBps,
+  metricsToCsv,
+  successRateBps,
+  tokenShares,
+} from "./analytics";
 import { config } from "./config";
 import {
   demoStage,
@@ -41,6 +47,7 @@ type Tab =
   | "market"
   | "subscriptions"
   | "activity"
+  | "analytics"
   | "merchant"
   | "keeper";
 
@@ -317,6 +324,17 @@ export default function App() {
     setBusy("connect");
     setNotice(null);
     try {
+      if (config.e2eFixtures) {
+        const { E2E_ADDRESS, E2E_TOKEN, E2EClient } = await import(
+          "./e2e-fixtures"
+        );
+        setAddress(E2E_ADDRESS);
+        setToken(E2E_TOKEN);
+        setClient(new E2EClient() as unknown as SubStreamClient);
+        setTab("guide");
+        return;
+      }
+
       const connected = await connectWallet(config.networkPassphrase);
       const nextClient = new SubStreamClient({
         contractId: config.contractId,
@@ -680,6 +698,12 @@ export default function App() {
                 Activity
               </TabButton>
               <TabButton
+                active={tab === "analytics"}
+                onClick={() => setTab("analytics")}
+              >
+                Public metrics
+              </TabButton>
+              <TabButton
                 active={tab === "merchant"}
                 onClick={() => setTab("merchant")}
               >
@@ -937,6 +961,21 @@ export default function App() {
               </section>
             )}
 
+            {tab === "analytics" && (
+              <section className="section">
+                <SectionHeading
+                  title="Public metrics"
+                  description="Network-wide, indexer-derived counters. These are cumulative lifetime totals from decoded events, not audited on-chain accounting."
+                />
+                <NetworkAnalytics
+                  payload={networkMetrics}
+                  live={networkMetrics !== null}
+                  configured={Boolean(config.indexerUrl)}
+                  decimals={displayDecimals}
+                />
+              </section>
+            )}
+
             {tab === "merchant" && (
               <section className="section">
                 <SectionHeading
@@ -944,11 +983,10 @@ export default function App() {
                   description="Create a reusable plan, then pause or resume it. Existing subscriptions keep their original terms."
                 />
                 <MerchantAnalytics
-                  metrics={merchantMetrics?.merchant}
+                  payload={merchantMetrics}
                   live={merchantMetrics !== null}
                   configured={Boolean(config.indexerUrl)}
                   decimals={displayDecimals}
-                  indexedEvents={merchantMetrics?.indexedEvents ?? null}
                 />
                 <div className="merchant-layout">
                   <form className="card form-card" onSubmit={handleCreatePlan}>
@@ -1154,24 +1192,114 @@ function TokenAmountList({
   );
 }
 
+interface ChartItem {
+  label: string;
+  value: number;
+  display: string;
+  title?: string;
+}
+
+function ChartBars({
+  title,
+  items,
+  emptyLabel,
+}: {
+  title: string;
+  items: ChartItem[];
+  emptyLabel: string;
+}) {
+  const max = Math.max(0, ...items.map((item) => item.value));
+  return (
+    <div className="chart-block">
+      <h4>{title}</h4>
+      {items.length === 0 ? (
+        <p className="muted">{emptyLabel}</p>
+      ) : (
+        <div className="bar-chart">
+          {items.map((item) => (
+            <div className="bar-row" key={item.label}>
+              <span title={item.title ?? item.label}>{item.label}</span>
+              <div className="bar-track">
+                <div
+                  className="bar-fill"
+                  style={{
+                    width:
+                      item.value === 0 || max === 0
+                        ? "0%"
+                        : `${Math.max(3, Math.round((item.value / max) * 100))}%`,
+                  }}
+                />
+              </div>
+              <strong>{item.display}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SuccessMeter({
+  succeeded,
+  failed,
+}: {
+  succeeded: number;
+  failed: number;
+}) {
+  const bps = successRateBps(succeeded, failed);
+  return (
+    <div className="chart-block">
+      <h4>Charge success rate</h4>
+      <div className="meter-row">
+        <strong>{formatBps(bps)}</strong>
+        <span className="muted">
+          {succeeded} settled · {failed} failed
+        </span>
+      </div>
+      <div className="bar-track meter-track">
+        <div className="bar-fill meter-fill" style={{ width: `${(bps ?? 0) / 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ExportButton({
+  payload,
+  scope,
+}: {
+  payload: MetricsResponse;
+  scope: string;
+}) {
+  return (
+    <button
+      className="ghost export-button"
+      type="button"
+      onClick={() =>
+        downloadCsv(
+          `substream-${scope}-metrics-${new Date().toISOString().slice(0, 10)}.csv`,
+          metricsToCsv(payload),
+        )
+      }
+    >
+      Export CSV
+    </button>
+  );
+}
+
 function MerchantAnalytics({
-  metrics,
+  payload,
   live,
   configured,
   decimals,
-  indexedEvents,
 }: {
-  metrics?: MerchantMetrics;
+  payload: MetricsResponse | null;
   live: boolean;
   configured: boolean;
   decimals: number;
-  indexedEvents: number | null;
 }) {
-  const attempts = metrics ? metrics.charges + metrics.failedCharges : 0;
-  const successRate =
-    metrics && attempts > 0
-      ? `${Math.round((metrics.charges / attempts) * 100)}%`
-      : "—";
+  const metrics = payload?.merchant;
+  const revenueShares = metrics ? tokenShares(metrics.charged) : [];
+  const refundShares = metrics ? tokenShares(metrics.refunded) : [];
 
   return (
     <section className="card analytics-card">
@@ -1184,9 +1312,12 @@ function MerchantAnalytics({
               : "No indexed merchant activity"}
           </h3>
         </div>
-        <span className={`pill ${live ? "pill-on" : "pill-off"}`}>
-          {live ? "Live" : "Offline"}
-        </span>
+        <div className="analytics-actions">
+          {live && payload && <ExportButton payload={payload} scope="merchant" />}
+          <span className={`pill ${live ? "pill-on" : "pill-off"}`}>
+            {live ? "Live" : "Offline"}
+          </span>
+        </div>
       </div>
 
       {!live ? (
@@ -1217,7 +1348,10 @@ function MerchantAnalytics({
               value={metrics.charges.toString()}
               hint={`${metrics.failedCharges} failed`}
             />
-            <Stat label="Success rate" value={successRate} />
+            <Stat
+              label="Success rate"
+              value={formatBps(successRateBps(metrics.charges, metrics.failedCharges))}
+            />
             <Stat
               label="Subscriptions"
               value={metrics.subscriptions.toString()}
@@ -1238,53 +1372,221 @@ function MerchantAnalytics({
                 decimals={decimals}
                 emptyLabel="No settled charges yet."
               />
+              <ChartBars
+                title="Revenue share"
+                items={revenueShares.map((item) => ({
+                  label: shortAddress(item.token),
+                  value: item.shareBps,
+                  display: formatBps(item.shareBps),
+                  title: item.token,
+                }))}
+                emptyLabel="No settled revenue to chart."
+              />
               <h4>Refunds by token</h4>
               <TokenAmountList
                 amounts={metrics.refunded}
                 decimals={decimals}
                 emptyLabel="No refunds yet."
               />
+              <ChartBars
+                title="Refund share"
+                items={refundShares.map((item) => ({
+                  label: shortAddress(item.token),
+                  value: item.shareBps,
+                  display: formatBps(item.shareBps),
+                  title: item.token,
+                }))}
+                emptyLabel="No refunds to chart."
+              />
             </div>
             <div>
+              <SuccessMeter
+                succeeded={metrics.charges}
+                failed={metrics.failedCharges}
+              />
               <h4>By plan</h4>
               {metrics.plans.length === 0 ? (
                 <p className="muted">No plan-level events yet.</p>
               ) : (
-                <table className="metrics-table">
-                  <thead>
-                    <tr>
-                      <th>Plan</th>
-                      <th>Subs</th>
-                      <th>Charges</th>
-                      <th>Failed</th>
-                      <th>Settled</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {metrics.plans.map((plan) => (
-                      <tr key={plan.planId}>
-                        <td>#{plan.planId}</td>
-                        <td>{plan.subscriptions}</td>
-                        <td>{plan.charges}</td>
-                        <td>{plan.failedCharges}</td>
-                        <td title={formatTokenAmounts(plan.charged, decimals)}>
-                          {formatTokenAmounts(plan.charged, decimals)}
-                        </td>
+                <>
+                  <ChartBars
+                    title="Charges by plan"
+                    items={metrics.plans.map((plan) => ({
+                      label: `#${plan.planId}`,
+                      value: plan.charges,
+                      display: `${plan.charges} charge${plan.charges === 1 ? "" : "s"}`,
+                    }))}
+                    emptyLabel="No plan charges yet."
+                  />
+                  <table className="metrics-table">
+                    <thead>
+                      <tr>
+                        <th>Plan</th>
+                        <th>Subs</th>
+                        <th>Charges</th>
+                        <th>Failed</th>
+                        <th>Settled</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {metrics.plans.map((plan) => (
+                        <tr key={plan.planId}>
+                          <td>#{plan.planId}</td>
+                          <td>{plan.subscriptions}</td>
+                          <td>{plan.charges}</td>
+                          <td>{plan.failedCharges}</td>
+                          <td title={formatTokenAmounts(plan.charged, decimals)}>
+                            {formatTokenAmounts(plan.charged, decimals)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           </div>
 
           <p className="fineprint">
-            Cumulative counters from indexed events. Amounts use the decimals
-            selected above; {indexedEvents ?? 0} recent events are retained for
-            the Activity timeline.
+            Indexer-derived cumulative lifetime counters, not audited on-chain
+            accounting. Amounts use the decimals selected above;{" "}
+            {payload?.indexedEvents ?? 0} recent events are retained for the
+            Activity timeline.
           </p>
         </>
       )}
+    </section>
+  );
+}
+
+function NetworkAnalytics({
+  payload,
+  live,
+  configured,
+  decimals,
+}: {
+  payload: MetricsResponse | null;
+  live: boolean;
+  configured: boolean;
+  decimals: number;
+}) {
+  if (!live || !payload) {
+    return (
+      <section className="card analytics-card">
+        <div className="card-top">
+          <div>
+            <span className="eyebrow">Network metrics</span>
+            <h3>Public indexer offline</h3>
+          </div>
+          <span className="pill pill-off">Offline</span>
+        </div>
+        <p className="muted">
+          {configured ? (
+            <>
+              The indexer did not return a valid metrics payload. Contract reads
+              and wallet actions continue to work from RPC.
+            </>
+          ) : (
+            <>
+              Set <code>VITE_INDEXER_URL</code> and run the indexer to publish
+              network metrics. Contract reads and wallet actions continue to
+              work from RPC.
+            </>
+          )}
+        </p>
+      </section>
+    );
+  }
+
+  const network = payload.network;
+  const chargedShares = tokenShares(network.charged);
+  const eventMix = [
+    { label: "Subscriptions", value: network.subscriptions },
+    { label: "Charges", value: network.charges },
+    { label: "Failed charges", value: network.failedCharges },
+    { label: "Cancellations", value: network.cancellations },
+    { label: "Plan updates", value: network.planUpdates },
+  ];
+
+  return (
+    <section className="card analytics-card">
+      <div className="card-top">
+        <div>
+          <span className="eyebrow">Network metrics</span>
+          <h3>SubStream activity across all plans</h3>
+        </div>
+        <div className="analytics-actions">
+          <ExportButton payload={payload} scope="network" />
+          <span className="pill pill-on">Live</span>
+        </div>
+      </div>
+
+      <div className="stats analytics-stats">
+        <Stat label="Plans created" value={network.plansCreated.toString()} />
+        <Stat
+          label="Settled charges"
+          value={network.charges.toString()}
+          hint={`${network.failedCharges} failed`}
+        />
+        <Stat
+          label="Subscriptions"
+          value={network.subscriptions.toString()}
+          hint={`${network.topUps} top-ups`}
+        />
+        <Stat
+          label="Cancellations"
+          value={network.cancellations.toString()}
+        />
+      </div>
+
+      <div className="analytics-columns">
+        <div>
+          <SuccessMeter
+            succeeded={network.charges}
+            failed={network.failedCharges}
+          />
+          <h4>Settled revenue by token</h4>
+          <TokenAmountList
+            amounts={network.charged}
+            decimals={decimals}
+            emptyLabel="No settled charges indexed yet."
+          />
+          <ChartBars
+            title="Revenue share"
+            items={chargedShares.map((item) => ({
+              label: shortAddress(item.token),
+              value: item.shareBps,
+              display: formatBps(item.shareBps),
+              title: item.token,
+            }))}
+            emptyLabel="No settled revenue to chart."
+          />
+        </div>
+        <div>
+          <ChartBars
+            title="Activity mix"
+            items={eventMix.map((item) => ({
+              label: item.label,
+              value: item.value,
+              display: item.value.toString(),
+            }))}
+            emptyLabel="No indexed activity yet."
+          />
+          <h4>Refunds by token</h4>
+          <TokenAmountList
+            amounts={network.refunded}
+            decimals={decimals}
+            emptyLabel="No refunds indexed yet."
+          />
+        </div>
+      </div>
+
+      <p className="fineprint">
+        Indexer-derived cumulative lifetime counters. Retained events:{" "}
+        {payload.indexedEvents}; last indexed ledger:{" "}
+        {payload.lastLedger ?? "—"}; first indexed ledger:{" "}
+        {payload.firstIndexedLedger ?? "—"}. Metrics are not audited accounting.
+      </p>
     </section>
   );
 }

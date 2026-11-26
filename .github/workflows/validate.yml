@@ -31,9 +31,15 @@ jobs:
 
       - name: Validate YAML manifests
         run: |
-          npx --yes js-yaml .github/workflows/validate.yml >/dev/null
-          npx --yes js-yaml substream/render.yaml >/dev/null
-          npx --yes js-yaml substream/docker-compose.yml >/dev/null
+          for file in \
+            .github/workflows/*.yml \
+            substream/render.yaml \
+            substream/docker-compose.yml \
+            substream/monitoring/*.yml \
+            substream/monitoring/grafana/provisioning/datasources/*.yml \
+            substream/monitoring/grafana/provisioning/dashboards/*.yml; do
+            npx --yes js-yaml "$file" >/dev/null
+          done
 
   substream-contract:
     name: SubStream contract (fmt, clippy, tests, wasm)
@@ -110,3 +116,32 @@ jobs:
 
       - name: Check SDK package
         run: npm pack -w @substream/sdk --dry-run
+
+      - name: Check release metadata
+        run: npm run sdk:check-release
+
+  substream-e2e:
+    name: SubStream dApp browser E2E
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: substream
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: substream/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run e2e

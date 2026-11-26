@@ -68,6 +68,7 @@ test("Prometheus output uses bounded sanitized outcome labels", () => {
   const text = renderPrometheus(metrics.snapshot());
   assert.match(text, /keeper_start_time_seconds 0/);
   assert.match(text, /keeper_last_tick_time_seconds 2/);
+  assert.match(text, /keeper_last_success_time_seconds 0/);
   assert.match(text, /keeper_last_failure_time_seconds 3/);
   assert.match(text, /keeper_tick_failures_total 1/);
   assert.match(text, /keeper_charge_outcomes_total\{outcome="insufficient_escrow"\} 1/);

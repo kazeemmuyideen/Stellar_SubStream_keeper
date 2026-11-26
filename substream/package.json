@@ -23,6 +23,8 @@
     "keeper:dry-run": "npm run dry -w @substream/keeper",
     "indexer": "npm run start -w @substream/indexer",
     "indexer:once": "npm run once -w @substream/indexer",
+    "e2e": "npm run build -w @substream/sdk && npm run test:e2e -w @substream/web",
+    "sdk:check-release": "node scripts/sdk-release-check.mjs",
     "contract:test": "cargo test --manifest-path Cargo.toml",
     "contract:build": "stellar contract build --manifest-path contracts/substream/Cargo.toml"
   },

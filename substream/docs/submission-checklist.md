@@ -12,19 +12,24 @@ verified without private accounts is already done.
       clean.
 - [x] Reproducible WASM build documented; current source and deployed hash
       `159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7`.
-- [x] TypeScript SDK, React dApp, keeper, and indexer; 45 tests passing, plus
-      typecheck, audit, production build, and an npm-ready SDK tarball.
-- [x] Public `/metrics` endpoint and merchant analytics: revenue by token,
-      charge success rate, plan breakdowns, failures, and refunds.
+- [x] TypeScript SDK, React dApp, keeper, and indexer; 50 unit tests and 4
+      Playwright E2E tests passing, plus typecheck, audit, production build,
+      release-metadata checks, and an npm-ready SDK tarball.
+- [x] Public `/metrics` endpoint and merchant/network analytics: revenue by
+      token, charge success rate, plan breakdowns, failures, refunds, charts,
+      and spreadsheet-safe CSV export.
 - [x] Indexer OpenAPI schema, keeper metrics endpoint with retry/backoff,
       Docker build instructions, and a release bundle with checksums.
-- [x] Threat model, hosting guide, public demo deployment guide, and release
-      process documentation.
+- [x] Local Prometheus/Grafana monitoring stack with alert rules, keeper
+      operations runbook, and GHCR image publish workflow.
+- [x] Threat model, hosting guide, public demo deployment guide, E2E testing
+      guide, keeper runbook, and release process documentation.
 - [x] Public hosting Blueprint for the dApp and indexer (`render.yaml`), with
       production env templates for both services.
 - [x] Guided six-step lifecycle demo and subscription manager in the dApp.
-- [x] Root CI workflow covering skills/manifests/secrets, contract
-      fmt/clippy/tests/WASM, and TypeScript audit/typecheck/tests/build.
+- [x] Root CI workflow covering skills/manifests/secrets/YAML, contract
+      fmt/clippy/tests/WASM, TypeScript audit/typecheck/tests/build/SDK checks,
+      and Chromium E2E tests.
 - [x] Fresh hardened testnet deployment with recorded transaction links in
       [`../deployments/testnet.json`](../deployments/testnet.json).
 - [x] One-command deploy (`scripts/deploy.sh`) and keeper setup
@@ -67,6 +72,9 @@ npm audit --audit-level=high
 npm run typecheck
 npm test
 npm run build
+npm run sdk:check-release
+npx playwright install --with-deps chromium
+npm run e2e
 npm pack -w @substream/sdk --dry-run
 ./scripts/release_bundle.sh
 cd ..

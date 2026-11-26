@@ -32,4 +32,6 @@ export const config = {
   explorerContractBase: networkPassphrase.includes("Public Global")
     ? "https://stellar.expert/explorer/public/contract"
     : "https://stellar.expert/explorer/testnet/contract",
+  e2eFixtures:
+    import.meta.env.DEV && import.meta.env.VITE_E2E_FIXTURES === "1",
 };

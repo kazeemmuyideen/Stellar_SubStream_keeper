@@ -72,9 +72,9 @@ Then open the dApp URL:
    wait for the countdown, charge, then cancel and inspect the refund link.
 3. Open **Subscriptions** to check status filters, search, escrow totals, and
    the subscriptions-to-my-plans table.
-4. Open **Merchant** to confirm cumulative metrics populate after the indexer
-   catches up. If the indexer is unreachable, the dApp still reads contract
-   state from RPC and labels the metrics as offline.
+4. Open **Public metrics** for network charts and the CSV export, then
+   **Merchant** for merchant-scoped metrics. If the indexer is unreachable, the
+   dApp still reads contract state from RPC and labels the metrics as offline.
 
 ## Other HTTPS hosts
 

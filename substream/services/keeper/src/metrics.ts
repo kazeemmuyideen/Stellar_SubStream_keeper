@@ -123,7 +123,8 @@ export function backoffDelay(
 }
 
 function gauge(name: string, value: number | null, help: string): string {
-  const suffix = value === null ? "NaN" : String(value);
+  // 0 means "never"; Prometheus alerts stay evaluable instead of comparing NaN.
+  const suffix = value === null ? "0" : String(value);
   return `# HELP ${name} ${help}\n# TYPE ${name} gauge\n${name} ${suffix}\n`;
 }
 

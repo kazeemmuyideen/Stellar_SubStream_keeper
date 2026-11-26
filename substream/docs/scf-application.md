@@ -14,7 +14,7 @@
 | Requested amount | **$60,000 in XLM** |
 | Milestones | MVP ($12K), Testnet ($18K), Mainnet ($24K), plus T0 ($6K) |
 | Repository | `substream/` in this repository (public, MIT) |
-| Stage | Working prototype: contract, 20 Rust + 45 TypeScript tests, SDK, dApp with guided demo and subscription manager, keeper, indexer, public metrics |
+| Stage | Working prototype: contract, 20 Rust + 50 TypeScript unit tests + 4 browser E2E tests, SDK, dApp with guided demo, subscription manager and analytics, keeper, indexer, public metrics |
 | Team | _[name(s), roles, GitHub, relevant background]_ |
 | Contact | _[email / Telegram / Discord]_ |
 
@@ -71,11 +71,12 @@ This repository already contains the prototype:
 - TypeScript SDK with typed reads/writes, signer adapters, bounded
   due-subscription discovery, and transaction verification.
 - React dApp with a six-step guided lifecycle demo, subscription manager,
-  merchant analytics, activity history, and manual keeper views.
+  merchant and network analytics with charts/CSV export, activity history, and
+  manual keeper views.
 - Background keeper with dry-run support, loopback metrics, bounded retry
-  backoff, and Docker build instructions.
+  backoff, Docker build instructions, and a Prometheus/Grafana monitoring stack.
 - Bounded event indexer with an HTTP API, OpenAPI schema, and cumulative public
-  metrics.
+  metrics. Four Chromium E2E tests verify the dashboard and indexer boundary.
 - One-command testnet deployment script.
 - Fresh hardened testnet deployment with a full create → subscribe → charge →
   cancel lifecycle exercised on chain (transaction links in
@@ -245,6 +246,8 @@ The core protocol remains free and open source.
 - Indexer API: [`indexer-openapi.json`](indexer-openapi.json)
 - Hosting guide: [`hosting.md`](hosting.md)
 - Public demo deployment: [`public-demo.md`](public-demo.md)
+- Keeper operations: [`keeper-operations.md`](keeper-operations.md)
+- E2E testing: [`e2e-testing.md`](e2e-testing.md)
 - Release process: [`release-process.md`](release-process.md)
 - Demo script: [`demo-video-script.md`](demo-video-script.md)
 - Submission checklist: [`submission-checklist.md`](submission-checklist.md)
