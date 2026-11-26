@@ -243,6 +243,7 @@ export default function App() {
         contractId: config.contractId,
         rpcUrl: config.rpcUrl,
         networkPassphrase: config.networkPassphrase,
+        maxFee: config.maxFee,
       });
       setAddress(connected);
       setClient(nextClient);

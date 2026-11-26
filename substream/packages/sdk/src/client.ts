@@ -96,7 +96,9 @@ export interface WriteResult {
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
 const DEFAULT_RPC_TIMEOUT_MS = 15_000;
-const DEFAULT_MAX_FEE = 1_000_000;
+// Testnet Soroban resource fees can exceed 1 XLM for contract writes. Keep a
+// bounded guard, but leave enough headroom for normal subscription actions.
+const DEFAULT_MAX_FEE = 20_000_000;
 const DEFAULT_CONFIRM_TIMEOUT_MS = 60_000;
 const MAX_SCAN_LIMIT = 500;
 const SCAN_CONCURRENCY = 8;
