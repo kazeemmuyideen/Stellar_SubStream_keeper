@@ -14,7 +14,8 @@
   "scripts": {
     "dev": "npm run dev -w @substream/web",
     "build": "npm run typecheck -w @substream/sdk && npm run build -w @substream/web",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build -w @substream/sdk && npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build -w @substream/sdk",
     "test": "npm run test --workspaces --if-present",
     "keeper": "npm run start -w @substream/keeper",
     "keeper:configure": "./scripts/configure-keeper.sh",

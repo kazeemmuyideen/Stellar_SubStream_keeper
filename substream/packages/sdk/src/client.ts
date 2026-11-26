@@ -11,14 +11,14 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 
-import { addressToScVal, boolToScVal, i128ToScVal, u32ToScVal, u64ToScVal } from "./scval";
+import { addressToScVal, boolToScVal, i128ToScVal, u32ToScVal, u64ToScVal } from "./scval.js";
 import {
   ChargeOutcome,
   ChargeOutcomeValue,
   Plan,
   Subscription,
   SubscriptionStatus,
-} from "./types";
+} from "./types.js";
 
 export type SubStreamSigner = (
   tx: Transaction,

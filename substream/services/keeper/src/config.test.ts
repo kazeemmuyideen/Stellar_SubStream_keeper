@@ -10,6 +10,10 @@ const KEYS = [
   "POLL_INTERVAL_MS",
   "MAX_SUBSCRIPTIONS",
   "ALLOW_HTTP",
+  "METRICS_HOST",
+  "METRICS_PORT",
+  "RETRY_BASE_MS",
+  "RETRY_MAX_MS",
 ];
 
 function setValidEnv(): void {
@@ -35,6 +39,10 @@ test("keeper config validates poll and scan bounds", () => {
   assert.equal(config.pollIntervalMs, 30_000);
   assert.equal(config.maxSubscriptions, 200);
   assert.equal(config.allowHttp, false);
+  assert.equal(config.metricsHost, "127.0.0.1");
+  assert.equal(config.metricsPort, 8788);
+  assert.equal(config.retryBaseMs, 1_000);
+  assert.equal(config.retryMaxMs, 60_000);
 
   process.env.POLL_INTERVAL_MS = "1";
   assert.throws(() => loadConfig(), /POLL_INTERVAL_MS/);
@@ -45,6 +53,27 @@ test("keeper config validates poll and scan bounds", () => {
   process.env.MAX_SUBSCRIPTIONS = "999";
   assert.throws(() => loadConfig(), /MAX_SUBSCRIPTIONS/);
   process.env.MAX_SUBSCRIPTIONS = "200";
+
+  for (const key of KEYS) delete process.env[key];
+});
+
+test("keeper config validates metrics and retry settings", () => {
+  setValidEnv();
+  process.env.METRICS_PORT = "0";
+  assert.equal(loadConfig().metricsPort, 0);
+  process.env.METRICS_PORT = "70000";
+  assert.throws(() => loadConfig(), /METRICS_PORT/);
+  process.env.METRICS_PORT = "8788";
+
+  process.env.METRICS_HOST = "bad host";
+  assert.throws(() => loadConfig(), /METRICS_HOST/);
+  delete process.env.METRICS_HOST;
+
+  process.env.RETRY_BASE_MS = "5000";
+  process.env.RETRY_MAX_MS = "1000";
+  assert.throws(() => loadConfig(), /RETRY_MAX_MS/);
+  delete process.env.RETRY_BASE_MS;
+  delete process.env.RETRY_MAX_MS;
 
   for (const key of KEYS) delete process.env[key];
 });

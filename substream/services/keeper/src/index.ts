@@ -7,6 +7,8 @@ import {
   SubStreamClient,
 } from "@substream/sdk";
 import { loadConfig } from "./config";
+import { backoffDelay, KeeperMetrics } from "./metrics";
+import { startMetricsServer } from "./metrics-server";
 
 const flags = new Set(process.argv.slice(2));
 const once = flags.has("--once");
@@ -24,6 +26,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const keypair = Keypair.fromSecret(config.secret);
   const source = keypair.publicKey();
+  const metrics = new KeeperMetrics();
 
   const client = new SubStreamClient({
     contractId: config.contractId,
@@ -56,72 +59,105 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => stop("SIGINT"));
   process.on("SIGTERM", () => stop("SIGTERM"));
 
-  while (!stopping) {
-    try {
-      const due = await client.getDueSubscriptions(
-        source,
-        config.maxSubscriptions,
-      );
-
-      if (due.length === 0) {
-        log("no subscriptions due");
-      } else {
-        log(`${due.length} subscription(s) due`);
-      }
-
-      for (const subscription of due) {
-        if (stopping) break;
-
-        if (dryRun) {
-          log(
-            `[dry-run] would charge #${subscription.id} ` +
-              `(plan #${subscription.planId}, balance ${subscription.balance})`,
-          );
-          continue;
-        }
-
-        try {
-          const { hash, outcome } = await client.charge({
-            subscriptionId: subscription.id,
-            source,
-            signer,
-          });
-
-          const detail = outcomeLabel(outcome);
-          log(
-            `charge #${subscription.id} (plan #${subscription.planId}) -> ` +
-              `${detail} [${hash}]`,
-          );
-
-          if (
-            outcome !== ChargeOutcome.Charged &&
-            outcome !== ChargeOutcome.Cancelled
-          ) {
-            log(
-              `charge #${subscription.id} did not settle; it will be ` +
-                "retried on the next tick",
-            );
-          }
-        } catch (error) {
-          log(
-            `charge #${subscription.id} failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      }
-    } catch (error) {
-      log(
-        `tick failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    if (once) break;
-    await sleep(config.pollIntervalMs);
+  const server =
+    !once && config.metricsPort > 0
+      ? await startMetricsServer(metrics, {
+          host: config.metricsHost,
+          port: config.metricsPort,
+        })
+      : undefined;
+  if (server) {
+    log(`metrics at http://${config.metricsHost}:${config.metricsPort}/metrics`);
   }
 
-  if (forceExit) clearTimeout(forceExit);
-  log("stopped");
+  try {
+    while (!stopping) {
+      metrics.tickStarted();
+      try {
+        const due = await client.getDueSubscriptions(
+          source,
+          config.maxSubscriptions,
+        );
+
+        metrics.tickSucceeded(due.length);
+        if (due.length === 0) {
+          log("no subscriptions due");
+        } else {
+          log(`${due.length} subscription(s) due`);
+        }
+
+        for (const subscription of due) {
+          if (stopping) break;
+
+          if (dryRun) {
+            metrics.dryRun();
+            log(
+              `[dry-run] would charge #${subscription.id} ` +
+                `(plan #${subscription.planId}, balance ${subscription.balance})`,
+            );
+            continue;
+          }
+
+          metrics.chargeAttempted();
+          try {
+            const { hash, outcome } = await client.charge({
+              subscriptionId: subscription.id,
+              source,
+              signer,
+            });
+
+            metrics.chargeSucceeded(outcomeLabel(outcome));
+            const detail = outcomeLabel(outcome);
+            log(
+              `charge #${subscription.id} (plan #${subscription.planId}) -> ` +
+                `${detail} [${hash}]`,
+            );
+
+            if (
+              outcome !== ChargeOutcome.Charged &&
+              outcome !== ChargeOutcome.Cancelled
+            ) {
+              log(
+                `charge #${subscription.id} did not settle; it will be ` +
+                  "retried on the next tick",
+              );
+            }
+          } catch (error) {
+            metrics.chargeFailed();
+            log(
+              `charge #${subscription.id} failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
+      } catch (error) {
+        metrics.tickFailed();
+        log(
+          `tick failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      if (once) break;
+
+      const failures = metrics.snapshot().consecutiveFailures;
+      const delay =
+        failures > 0
+          ? backoffDelay(failures, config.retryBaseMs, config.retryMaxMs)
+          : config.pollIntervalMs;
+      if (failures > 0) {
+        log(`${failures} consecutive failure(s); retrying in ${delay}ms`);
+      }
+      await sleep(delay);
+    }
+  } finally {
+    if (server) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    if (forceExit) clearTimeout(forceExit);
+    log(metrics.summaryLine());
+    log("stopped");
+  }
 }
 
 void main().catch((error) => {

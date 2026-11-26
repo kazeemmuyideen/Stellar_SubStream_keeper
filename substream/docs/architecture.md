@@ -177,6 +177,8 @@ redirect escrow: the refund always goes to the subscriber.
 
 ## 7. Security considerations
 
+The actor-by-actor mitigation table is in [`threat-model.md`](threat-model.md).
+
 ### Custody
 
 The contract holds user funds. The attack surface is intentionally small: one
@@ -197,10 +199,9 @@ the token's base units.
 
 ### Overflow
 
-All arithmetic uses `checked_*` where user input can grow balances or deposits,
-and returns `Overflow`. `cycles_paid` uses saturating addition. Timestamp
-additions fall back to `u64::MAX` if they would overflow, which effectively
-disables further charges rather than wrapping.
+Arithmetic that can grow balances, cycle counters, IDs, or timestamps uses
+`checked_*` and returns `Overflow` rather than wrapping. Tests cover exhausted
+ID counters, schedule overflow, and cycle-counter overflow.
 
 ### Griefing
 
@@ -262,7 +263,8 @@ filters), `/health`, `/stats`, and `/metrics`. Metrics are incremental, persiste
 counters grouped by merchant and plan: successful and failed charges, new
 subscriptions, top-ups, cancellations, and settled/refunded base-unit totals by
 token. `/metrics` can be called without a wallet for public network totals or
-with `merchant=G...` for a scoped view. The dApp validates those payloads, caps
+with `merchant=G...` for a scoped view. The API contract is published as
+[`indexer-openapi.json`](indexer-openapi.json). The dApp validates those payloads, caps
 the displayed token and plan arrays, refreshes them every minute, and falls back
 to current contract state when the indexer is unavailable, so the indexer is
 never a liveness dependency.

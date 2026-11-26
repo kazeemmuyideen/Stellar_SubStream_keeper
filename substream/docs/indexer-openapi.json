@@ -1,0 +1,248 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SubStream indexer API",
+    "version": "0.1.0",
+    "description": "Read-only HTTP API for indexed SubStream contract events and cumulative metrics."
+  },
+  "servers": [{ "url": "http://localhost:8787" }],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Service status",
+        "responses": {
+          "200": {
+            "description": "Current indexer state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "Newest retained events",
+        "parameters": [
+          { "$ref": "#/components/parameters/Subscriber" },
+          { "$ref": "#/components/parameters/SubscriptionId" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained events, newest first",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EventsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "summary": "Retained event counts by kind",
+        "responses": {
+          "200": {
+            "description": "Counts for events currently retained in the cache",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Cumulative network or merchant metrics",
+        "parameters": [{ "$ref": "#/components/parameters/Merchant" }],
+        "responses": {
+          "200": {
+            "description": "Cumulative metrics; merchant section present only for a known address",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MetricsResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid merchant address",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Subscriber": {
+        "name": "subscriber",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Filter by subscriber G account address"
+      },
+      "SubscriptionId": {
+        "name": "subscriptionId",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Filter by subscription id"
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 },
+        "description": "Maximum events to return; larger values are clamped"
+      },
+      "Merchant": {
+        "name": "merchant",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Valid Stellar G account or C contract address"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok", "contractId", "lastLedger", "events"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "contractId": { "type": "string" },
+          "lastLedger": { "type": ["integer", "null"] },
+          "events": { "type": "integer" }
+        }
+      },
+      "IndexedEvent": {
+        "type": "object",
+        "required": ["id", "kind", "txHash", "ledger", "timestamp"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["plan_new", "plan_upd", "subscribe", "topped_up", "charged", "pay_fail", "cancelled"]
+          },
+          "subscriptionId": { "type": ["string", "null"] },
+          "planId": { "type": ["string", "null"] },
+          "subscriber": { "type": ["string", "null"] },
+          "merchant": { "type": ["string", "null"] },
+          "token": { "type": ["string", "null"] },
+          "amount": { "type": ["string", "null"], "description": "Base units as a string" },
+          "balance": { "type": ["string", "null"] },
+          "nextCharge": { "type": ["string", "null"] },
+          "reason": { "type": ["integer", "null"] },
+          "txHash": { "type": "string" },
+          "ledger": { "type": "integer" },
+          "timestamp": { "type": "integer", "description": "Unix seconds" }
+        }
+      },
+      "EventsResponse": {
+        "type": "object",
+        "required": ["events", "cursor", "lastLedger", "indexed"],
+        "properties": {
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/IndexedEvent" } },
+          "cursor": { "type": ["string", "null"] },
+          "lastLedger": { "type": ["integer", "null"] },
+          "indexed": { "type": "integer" }
+        }
+      },
+      "StatsResponse": {
+        "type": "object",
+        "required": ["events", "lastLedger", "byKind"],
+        "properties": {
+          "events": { "type": "integer" },
+          "lastLedger": { "type": ["integer", "null"] },
+          "byKind": { "type": "object", "additionalProperties": { "type": "integer" } }
+        }
+      },
+      "TokenAmount": {
+        "type": "object",
+        "required": ["token", "amount"],
+        "properties": {
+          "token": { "type": "string", "description": "SAC contract id or 'unknown'" },
+          "amount": { "type": "string", "description": "Cumulative base units as a decimal string" }
+        }
+      },
+      "MetricCounters": {
+        "type": "object",
+        "required": ["subscriptions", "topUps", "charges", "failedCharges", "cancellations", "charged", "refunded"],
+        "properties": {
+          "subscriptions": { "type": "integer" },
+          "topUps": { "type": "integer" },
+          "charges": { "type": "integer" },
+          "failedCharges": { "type": "integer" },
+          "cancellations": { "type": "integer" },
+          "charged": { "type": "array", "items": { "$ref": "#/components/schemas/TokenAmount" } },
+          "refunded": { "type": "array", "items": { "$ref": "#/components/schemas/TokenAmount" } }
+        }
+      },
+      "PlanMetrics": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MetricCounters" },
+          {
+            "type": "object",
+            "required": ["planId"],
+            "properties": { "planId": { "type": "string" } }
+          }
+        ]
+      },
+      "MerchantMetrics": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MetricCounters" },
+          {
+            "type": "object",
+            "required": ["merchant", "plans"],
+            "properties": {
+              "merchant": { "type": "string" },
+              "plans": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/PlanMetrics" },
+                "description": "Largest plans by successful charges, capped at 100"
+              }
+            }
+          }
+        ]
+      },
+      "NetworkMetrics": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MetricCounters" },
+          {
+            "type": "object",
+            "required": ["plansCreated", "planUpdates"],
+            "properties": {
+              "plansCreated": { "type": "integer" },
+              "planUpdates": { "type": "integer" }
+            }
+          }
+        ]
+      },
+      "MetricsResponse": {
+        "type": "object",
+        "required": ["network", "indexedEvents", "lastLedger", "firstIndexedLedger"],
+        "properties": {
+          "network": { "$ref": "#/components/schemas/NetworkMetrics" },
+          "merchant": { "$ref": "#/components/schemas/MerchantMetrics" },
+          "indexedEvents": { "type": "integer", "description": "Events retained in the cache, not lifetime totals" },
+          "lastLedger": { "type": ["integer", "null"] },
+          "firstIndexedLedger": { "type": ["integer", "null"] }
+        }
+      }
+    }
+  }
+}

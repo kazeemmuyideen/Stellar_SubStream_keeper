@@ -117,7 +117,7 @@ plan behind. Transaction links are printed as it runs.
 | `scripts/deploy.sh` | Builds and deploys with the Stellar CLI |
 | `scripts/configure-keeper.sh` | Writes the keeper `.env` from a local identity |
 | `scripts/demo.sh` | Runs create → subscribe → charge → refund on a live contract |
-| `docs/` | Architecture, contract API, demo script, and the SCF application draft |
+| `docs/` | Architecture, contract API, threat model, hosting/release guides, and the SCF application draft |
 
 ## Quick start
 
@@ -228,6 +228,9 @@ due yet. The keeper account only pays network fees; subscriber money stays in
 the contract's escrow. On testnet, fund the keeper account with friendbot if it
 runs out of XLM.
 
+A running keeper also serves loopback metrics at
+`http://127.0.0.1:8788/metrics` and JSON health at `/health`. Failed ticks use
+bounded exponential backoff; see [`services/keeper/README.md`](services/keeper/README.md).
 To set it up manually instead, copy `services/keeper/.env.example` to
 `services/keeper/.env` and fill in `CONTRACT_ID` and `KEEPER_SECRET`.
 
@@ -308,7 +311,10 @@ SubStream is built for the SCF 7.0 **Open Track**:
   recurring remittances.
 
 The full application draft, milestones, and budget are in
-[`docs/scf-application.md`](docs/scf-application.md).
+[`docs/scf-application.md`](docs/scf-application.md). Deployment and release
+evidence is covered by [`docs/hosting.md`](docs/hosting.md),
+[`docs/release-process.md`](docs/release-process.md), and
+[`docs/threat-model.md`](docs/threat-model.md).
 
 ## Roadmap
 

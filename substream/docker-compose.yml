@@ -1,0 +1,23 @@
+services:
+  indexer:
+    build:
+      context: .
+      dockerfile: services/indexer/Dockerfile
+    env_file: services/indexer/.env
+    ports:
+      - "8787:8787"
+    volumes:
+      - indexer-data:/app/data
+    restart: unless-stopped
+
+  keeper:
+    build:
+      context: .
+      dockerfile: services/keeper/Dockerfile
+    env_file: services/keeper/.env
+    ports:
+      - "127.0.0.1:8788:8788"
+    restart: unless-stopped
+
+volumes:
+  indexer-data:

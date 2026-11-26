@@ -14,7 +14,7 @@
 | Requested amount | **$60,000 in XLM** |
 | Milestones | MVP ($12K), Testnet ($18K), Mainnet ($24K), plus T0 ($6K) |
 | Repository | `substream/` in this repository (public, MIT) |
-| Stage | Working prototype: contract, 19 passing tests, SDK, dApp, keeper, indexer |
+| Stage | Working prototype: contract, 20 Rust + 42 TypeScript tests, SDK, dApp, keeper, indexer, public metrics |
 | Team | _[name(s), roles, GitHub, relevant background]_ |
 | Contact | _[email / Telegram / Discord]_ |
 
@@ -64,15 +64,18 @@ This repository already contains the prototype:
 
 - Soroban contract with plan creation, subscription escrow, top-ups,
   permissionless charges, grace periods, refunds, TTL management, and events.
-- **19/19 unit tests passing** (`cargo test --workspace`), including grace-period
+- **20/20 contract tests passing** (`cargo test --workspace`), including grace-period
   expiry, refund-safe token snapshots, bounded discovery indexes, ID overflow,
-  plan-update isolation, and merchant cancellation.
+  plan-update isolation, merchant cancellation, and seeded state-machine
+  invariants.
 - TypeScript SDK with typed reads/writes, signer adapters, bounded
   due-subscription discovery, and transaction verification.
 - React dApp with subscriber, merchant, activity history, and manual keeper
   views.
-- Background keeper with dry-run support and a bounded event indexer with an
-  HTTP API.
+- Background keeper with dry-run support, loopback metrics, bounded retry
+  backoff, and Docker build instructions.
+- Bounded event indexer with an HTTP API, OpenAPI schema, and cumulative public
+  metrics.
 - One-command testnet deployment script.
 - Live testnet deployment with a full create → subscribe → charge → cancel
   lifecycle exercised on chain (transaction links in the README).
@@ -134,9 +137,9 @@ reference implementation.
 | # | Deliverable | Verification | Budget |
 | --- | --- | --- | --- |
 | 1 | Invariant and property-based test suite for the charge state machine (balances never negative, refunds ≤ deposits, no charges after cancellation, schedule monotonicity) | Green CI run, published test report, reproducible `cargo test` | $4,000 |
-| 2 | Reproducible WASM build, CI (fmt, clippy, tests, TypeScript typecheck), signed release artifacts | GitHub Actions green, release page with WASM hash and build instructions | $2,500 |
-| 3 | SDK v0.1: unit tests, typed contract bindings, published package or tagged release, integration test against testnet | Public package/release, test logs, example app | $3,500 |
-| 4 | Keeper v0.1: metrics endpoint, Docker image, dry-run mode, retry/backoff, runbook | Published image, README, sample metrics output | $2,000 |
+| 2 | Reproducible WASM build, CI (fmt, clippy, tests, TypeScript typecheck), checksummed release bundle with optional GPG signature | GitHub Actions green, release page with WASM hash, `SHA256SUMS`, and build instructions | $2,500 |
+| 3 | SDK v0.1: unit tests, typed contract bindings, compiled npm-ready tarball, tagged release, integration test against testnet | Tagged release, `npm pack` tarball, test logs, example app | $3,500 |
+| 4 | Keeper v0.1: metrics endpoint, Docker image, dry-run mode, retry/backoff, runbook | Image build instructions, README, sample metrics output | $2,000 |
 
 **Exit criteria:** a third party can clone the repo, run the tests, deploy to
 testnet, and operate a keeper using only the documentation.
@@ -212,7 +215,7 @@ _[Fill in before submission]_
 | Risk | Mitigation |
 | --- | --- |
 | Smart contract bug or loss of funds | Small immutable surface, invariant tests, internal review, Audit Bank audit before mainnet, conservative caps during beta |
-| Keeper liveness | Charging is permissionless; subscribers and merchants can settle directly; keeper metrics and alerts |
+| Keeper liveness | Charging is permissionless; subscribers and merchants can settle directly; keeper metrics endpoint supports external alerting |
 | Merchant pauses a plan to avoid service | Subscribers can always cancel and recover the full remaining balance; pause is visible on chain |
 | Token with non-standard behavior | Document SAC-only support; restrict pilot plans to vetted assets (XLM/USDC) |
 | Low merchant adoption | Start with two design partners from the Stellar ecosystem; measure activation and settled charges, not signups |
@@ -227,13 +230,17 @@ The core protocol remains free and open source.
 
 ## Links
 
-- Repository: _[GitHub URL]_
-- Demo: _[testnet dApp URL]_
+- Repository: [`kazeemmuyideen/Stellar_SubStream_keeper`](https://github.com/kazeemmuyideen/Stellar_SubStream_keeper)
+- Demo: _[testnet dApp URL — see `hosting.md`]_
 - Demo video: _[URL]_
 - Contract (testnet):
   `CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN`
   ([stellar.expert](https://stellar.expert/explorer/testnet/contract/CBQROANJSSROOEZUZGNRDRUWOWQFZAREE4QLERSTMKVJD2B2T2U6FYMN))
 - Architecture: [`architecture.md`](architecture.md)
 - Contract API: [`contract-api.md`](contract-api.md)
+- Threat model: [`threat-model.md`](threat-model.md)
+- Indexer API: [`indexer-openapi.json`](indexer-openapi.json)
+- Hosting guide: [`hosting.md`](hosting.md)
+- Release process: [`release-process.md`](release-process.md)
 - Demo script: [`demo-video-script.md`](demo-video-script.md)
 - Submission checklist: [`submission-checklist.md`](submission-checklist.md)

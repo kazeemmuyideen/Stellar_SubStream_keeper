@@ -7,3 +7,5 @@ target/
 .DS_Store
 .stellar/
 services/indexer/data/
+# Seeded invariant tests generate one large snapshot per seed; keep them local.
+contracts/substream/test_snapshots/property_test/

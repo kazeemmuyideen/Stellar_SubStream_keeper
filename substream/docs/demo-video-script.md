@@ -14,7 +14,7 @@ Show the repository README and the contract on stellar.expert.
 
 - Open `contracts/substream/src/lib.rs`.
 - Point out `subscribe`, `charge`, `cancel`, and the snapshotted plan terms.
-- Mention 19 contract tests, the TypeScript tests, and the root CI workflow.
+- Mention 20 contract tests, the TypeScript tests, and the root CI workflow.
 
 ## 0:50–1:50 — Subscriber flow
 

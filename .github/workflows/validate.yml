@@ -26,6 +26,12 @@ jobs:
       - name: Scan tracked files for secrets
         run: ./scripts/check_secrets.sh
 
+      - name: Check Markdown links and anchors
+        run: node scripts/check_docs.mjs
+
+      - name: Validate workflow YAML
+        run: npx --yes js-yaml .github/workflows/validate.yml >/dev/null
+
   substream-contract:
     name: SubStream contract (fmt, clippy, tests, wasm)
     runs-on: ubuntu-latest
@@ -87,6 +93,9 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
+      - name: Build SDK
+        run: npm run build -w @substream/sdk
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -95,3 +104,6 @@ jobs:
 
       - name: Build dApp
         run: npm run build
+
+      - name: Check SDK package
+        run: npm pack -w @substream/sdk --dry-run

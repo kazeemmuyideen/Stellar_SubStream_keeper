@@ -1,3 +1,3 @@
-export * from "./client";
-export * from "./scval";
-export * from "./types";
+export * from "./client.js";
+export * from "./scval.js";
+export * from "./types.js";

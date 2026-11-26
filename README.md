@@ -7,7 +7,7 @@ A collection of tools, skills, and reference materials for participating in the 
 The skills in this repo are packaged as a [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin:
 
 ```
-/plugin marketplace add lumenloop/awesome-stellar-community-fund
+/plugin marketplace add kazeemmuyideen/Stellar_SubStream_keeper
 /plugin install awesome-stellar-community-fund@awesome-scf
 ```
 

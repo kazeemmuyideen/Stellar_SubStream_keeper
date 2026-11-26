@@ -47,6 +47,9 @@ All responses are JSON with permissive CORS headers.
 | `GET /stats` | Retained event counts by kind |
 | `GET /metrics` | Network metrics; add `merchant=G...` for merchant metrics |
 
+A machine-readable contract for all four endpoints is in
+[`docs/indexer-openapi.json`](../../docs/indexer-openapi.json).
+
 `GET /events` accepts `subscriber`, `subscriptionId`, and `limit` (1–500,
 default 100) query parameters:
 

@@ -7,16 +7,20 @@ verified without private accounts is already done.
 
 - [x] Soroban contract with plans, escrow subscriptions, permissionless
       charges, grace periods, refunds, and typed events.
-- [x] 19 contract tests passing; `cargo fmt --check` and
-      `cargo clippy --all-targets -- -D warnings` clean.
+- [x] 20 contract tests passing (including a seeded property-style invariant
+      suite); `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
+      clean.
 - [x] Reproducible WASM build documented; current source hash
       `159c0f098e8ca4068709b50081731e175f79327166928679c7b9f2969e093af7`.
       The live testnet deployment still runs the previous WASM until it is
       redeployed.
-- [x] TypeScript SDK, React dApp, keeper, and indexer; 36 tests passing, plus
-      typecheck, audit, and production build.
+- [x] TypeScript SDK, React dApp, keeper, and indexer; 42 tests passing, plus
+      typecheck, audit, production build, and an npm-ready SDK tarball.
 - [x] Public `/metrics` endpoint and merchant analytics: revenue by token,
       charge success rate, plan breakdowns, failures, and refunds.
+- [x] Indexer OpenAPI schema, keeper metrics endpoint with retry/backoff,
+      Docker build instructions, and a release bundle with checksums.
+- [x] Threat model, hosting guide, and release process documentation.
 - [x] Root CI workflow covering skills/manifests/secrets, contract
       fmt/clippy/tests/WASM, and TypeScript audit/typecheck/tests/build.
 - [x] Live testnet deployment with recorded transaction links in
@@ -33,8 +37,8 @@ verified without private accounts is already done.
 - [ ] Team names, roles, GitHub handles, and relevant background
       (`docs/scf-application.md`, **Team** section).
 - [ ] Contact email / Telegram / Discord.
-- [ ] Public GitHub repository URL (push `substream/` to its own repo or a
-      public branch).
+- [ ] Confirm the canonical public repository URL. Application docs currently
+      use the `origin` remote, `kazeemmuyideen/Stellar_SubStream_keeper`.
 - [ ] Public demo URL for the dApp (for example Vercel, Netlify, or Cloudflare
       Pages). Set the `VITE_*` variables from `apps/web/.env.example`.
 - [ ] Redeploy the contract with the lifecycle and hardening fixes, then update
@@ -62,6 +66,11 @@ npm audit --audit-level=high
 npm run typecheck
 npm test
 npm run build
+npm pack -w @substream/sdk --dry-run
+./scripts/release_bundle.sh
+cd ..
+node scripts/check_docs.mjs
+cd substream
 ./scripts/demo.sh --interval 10 --cycles 2
 ```
 

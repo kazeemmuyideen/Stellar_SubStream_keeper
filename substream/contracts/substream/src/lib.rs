@@ -748,4 +748,6 @@ fn push_index(env: &Env, key: DataKey, id: u64) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+mod property_test;
+#[cfg(test)]
 mod test;
